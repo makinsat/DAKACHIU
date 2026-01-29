@@ -1,454 +1,506 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Droplets, 
-  BookOpen, 
-  Camera, 
-  Home, 
-  Calendar, 
-  PlusCircle, 
-  MessageCircle, 
-  User, 
-  Image as ImageIcon,
-  Send,
-  X,
-  Clock,
-  MapPin,
-  LogOut,
-  Smartphone
-} from 'lucide-react';
-
-// --- Firebase Imports ---
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  onAuthStateChanged, 
-  signInAnonymously, 
-  signOut
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  onSnapshot, 
-  query, 
-  orderBy
-} from 'firebase/firestore';
-
-// --- Firebase Configuration (已連結你的專案) ---
-const firebaseConfig = {
-  apiKey: "AIzaSyBrMI4-2lczCGEc9baxL4hIVstyBCLojWE",
-  authDomain: "makinsatdaka.firebaseapp.com",
-  projectId: "makinsatdaka",
-  storageBucket: "makinsatdaka.firebasestorage.app",
-  messagingSenderId: "828692776788",
-  appId: "1:828692776788:web:8d28603d904973db32aac1",
-  measurementId: "G-HDL0ZZ0E7P"
-};
-
-// 初始化 Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-// 設定資料路徑 ID
-const appId = 'makinsatdaka'; 
-
-export default function App() {
-  // --- State 管理 ---
-  const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('home');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentType, setCurrentType] = useState(null); // 'water', 'english', 'life'
-  const [inputText, setInputText] = useState('');
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [posts, setPosts] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fileInputRef = useRef(null);
-
-  // --- Firebase Auth 監聽 ---
-  useEffect(() => {
-    // 監聽使用者的登入狀態改變
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setIsLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // --- Firebase Firestore 資料同步 ---
-  useEffect(() => {
-    // 如果沒有使用者，就不讀取資料
-    if (!user) {
-      setPosts([]);
-      return;
-    }
-
-    // 資料路徑：artifacts/makinsatdaka/users/{使用者ID}/posts
-    // 這樣每個人只會看到自己的打卡紀錄
-    const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打卡小幫手</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    // 建立查詢 (這邊先抓取所有資料，稍後在前端排序)
-    const q = query(postsCollection);
-
-    // 監聽資料庫變化 (Real-time listener)
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const loadedPosts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // 在前端依照時間排序 (新的在上面)
-      loadedPosts.sort((a, b) => {
-         if (a.createdAt && b.createdAt) {
-           return b.createdAt - a.createdAt;
-         }
-         return 0;
-      });
-
-      setPosts(loadedPosts);
-    }, (error) => {
-      console.error("讀取資料失敗:", error);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
-
-  // --- 登入/登出功能 ---
-  const handleLogin = async () => {
-    setIsLoading(true);
-    try {
-      // 使用匿名登入 (記得在 Firebase Console 開啟 Authentication -> Anonymous)
-      await signInAnonymously(auth);
-    } catch (error) {
-      console.error("登入失敗:", error);
-      alert(`登入失敗：${error.message}\n請確認 Firebase Console 的 Authentication 已開啟「匿名登入」。`);
-      setIsLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    if (window.confirm('確定要登出嗎？')) {
-      signOut(auth);
-    }
-  };
-
-  // --- 輔助功能 ---
-  
-  const getTodayDate = () => {
-    const d = new Date();
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-  };
-
-  const handleImageChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      
-      if (file.size > 1024 * 1024) { // 限制 1MB
-        alert("圖片太大囉！為了節省流量，請上傳 1MB 以下的照片。");
-        return;
+    <!-- Import Map: 定義模組來源 -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js"
       }
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSelectedImage(reader.result);
-      };
-      reader.readAsDataURL(file);
     }
-  };
+    </script>
 
-  const openCheckIn = (type) => {
-    setCurrentType(type);
-    setIsModalOpen(true);
-    setInputText('');
-    setSelectedImage(null);
-  };
+    <style>
+        /* 隱藏捲軸但保留功能 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f3f4f6; 
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-  // --- 送出資料到 Firestore ---
-  const handleSubmit = async () => {
-    if (!inputText && !selectedImage) {
-      alert("請輸入文字或上傳圖片！");
-      return;
-    }
-
-    if (!user) {
-      alert("請先登入！");
-      return;
-    }
-
-    try {
-      const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
-      
-      await addDoc(postsCollection, {
-        type: currentType.id,
-        title: currentType.label,
-        text: inputText,
-        image: selectedImage, // 注意：正式專案建議將圖片上傳至 Firebase Storage，這裡是將 Base64 存入 Firestore (適合小型測試)
-        date: getTodayDate(),
-        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        color: currentType.color,
-        createdAt: Date.now() // 用於排序的时间戳记
-      });
-
-      setIsModalOpen(false);
-    } catch (error) {
-      console.error("寫入錯誤: ", error);
-      alert("打卡失敗，請檢查：\n1. 網路是否連線\n2. Firebase Firestore 是否已建立\n3. Firestore 安全規則是否為測試模式 (allow read, write)");
-    }
-  };
-
-  const checkInTypes = [
-    { id: 'water', label: '喝水紀錄', icon: <Droplets size={24} />, color: 'bg-blue-500', bgColor: 'bg-blue-100', textColor: 'text-blue-600' },
-    { id: 'english', label: '英文打卡', icon: <BookOpen size={24} />, color: 'bg-orange-500', bgColor: 'bg-orange-100', textColor: 'text-orange-600' },
-    { id: 'life', label: '生活日常', icon: <Camera size={24} />, color: 'bg-pink-500', bgColor: 'bg-pink-100', textColor: 'text-pink-600' },
-  ];
-
-  // --- 登入畫面 ---
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-green-500 to-emerald-700 flex flex-col items-center justify-center p-6 text-white font-sans">
-        <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6 shadow-xl animate-bounce">
-           <span className="text-4xl">🐻</span>
-        </div>
-        <h1 className="text-3xl font-bold mb-2">打卡小幫手</h1>
-        <p className="text-green-100 mb-8 text-center max-w-xs">隨時隨地紀錄生活，<br/>同步你的喝水、學習與日常。</p>
+    <script type="text/babel" data-type="module">
+        import React, { useState, useRef, useEffect } from 'react';
+        import { createRoot } from 'react-dom/client';
         
-        <button 
-          onClick={handleLogin}
-          disabled={isLoading}
-          className="bg-white text-green-700 font-bold py-3 px-8 rounded-full shadow-lg flex items-center gap-2 hover:bg-green-50 transition transform hover:scale-105 active:scale-95 disabled:opacity-70"
-        >
-           {isLoading ? '載入中...' : (
-             <>
-               <Smartphone size={20} />
-               開始使用 / 登入
-             </>
-           )}
-        </button>
-        <p className="mt-6 text-xs text-green-200/60">目前連接專案: makinsatdaka</p>
-      </div>
-    );
-  }
+        // --- Firebase Imports ---
+        import { initializeApp } from 'firebase/app';
+        import { 
+            getAuth, 
+            onAuthStateChanged, 
+            signInAnonymously, 
+            signOut 
+        } from 'firebase/auth';
+        import { 
+            getFirestore, 
+            collection, 
+            addDoc, 
+            onSnapshot, 
+            query, 
+            orderBy 
+        } from 'firebase/firestore';
 
-  // --- 主畫面 ---
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans max-w-md mx-auto shadow-2xl overflow-hidden relative">
-      
-      {/* Header */}
-      <div className="bg-gradient-to-b from-green-400 to-green-600 pt-8 pb-4 px-6 rounded-b-[30px] shadow-md z-10 text-white relative">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-3">
-             <div className="relative">
-                <div className="w-12 h-12 bg-yellow-300 rounded-full border-2 border-white flex items-center justify-center overflow-hidden">
-                   <span className="text-2xl">🐻</span> 
+        // --- Icons Components (替代 lucide-react) ---
+        const IconBase = ({ size = 24, className = "", children }) => (
+            <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width={size} 
+                height={size} 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className={className}
+            >
+                {children}
+            </svg>
+        );
+
+        const Droplets = (props) => <IconBase {...props}><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.8-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></IconBase>;
+        const BookOpen = (props) => <IconBase {...props}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></IconBase>;
+        const Camera = (props) => <IconBase {...props}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></IconBase>;
+        const Home = (props) => <IconBase {...props}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></IconBase>;
+        const Calendar = (props) => <IconBase {...props}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></IconBase>;
+        const PlusCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></IconBase>;
+        const MessageCircle = (props) => <IconBase {...props}><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></IconBase>;
+        const User = (props) => <IconBase {...props}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></IconBase>;
+        const ImageIcon = (props) => <IconBase {...props}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></IconBase>;
+        const Send = (props) => <IconBase {...props}><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></IconBase>;
+        const X = (props) => <IconBase {...props}><path d="M18 6 6 18"/><path d="m6 6 18 18"/></IconBase>;
+        const Clock = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconBase>;
+        const MapPin = (props) => <IconBase {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></IconBase>;
+        const LogOut = (props) => <IconBase {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>;
+        const Smartphone = (props) => <IconBase {...props}><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></IconBase>;
+
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyBrMI4-2lczCGEc9baxL4hIVstyBCLojWE",
+          authDomain: "makinsatdaka.firebaseapp.com",
+          projectId: "makinsatdaka",
+          storageBucket: "makinsatdaka.firebasestorage.app",
+          messagingSenderId: "828692776788",
+          appId: "1:828692776788:web:8d28603d904973db32aac1",
+          measurementId: "G-HDL0ZZ0E7P"
+        };
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = 'makinsatdaka'; 
+
+        // --- Main App Component ---
+        function App() {
+          const [user, setUser] = useState(null);
+          const [activeTab, setActiveTab] = useState('home');
+          const [isModalOpen, setIsModalOpen] = useState(false);
+          const [currentType, setCurrentType] = useState(null);
+          const [inputText, setInputText] = useState('');
+          const [selectedImage, setSelectedImage] = useState(null);
+          const [posts, setPosts] = useState([]);
+          const [isLoading, setIsLoading] = useState(true);
+
+          const fileInputRef = useRef(null);
+
+          // Firebase Auth
+          useEffect(() => {
+            const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+              setUser(currentUser);
+              setIsLoading(false);
+            });
+            return () => unsubscribe();
+          }, []);
+
+          // Firebase Firestore
+          useEffect(() => {
+            if (!user) {
+              setPosts([]);
+              return;
+            }
+
+            const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
+            const q = query(postsCollection); // 注意：簡單查詢以避免索引問題
+
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+              const loadedPosts = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              }));
+              
+              // 客戶端排序
+              loadedPosts.sort((a, b) => {
+                 if (a.createdAt && b.createdAt) {
+                   return b.createdAt - a.createdAt;
+                 }
+                 return 0;
+              });
+
+              setPosts(loadedPosts);
+            }, (error) => {
+              console.error("讀取資料失敗:", error);
+            });
+
+            return () => unsubscribe();
+          }, [user]);
+
+          const handleLogin = async () => {
+            setIsLoading(true);
+            try {
+              await signInAnonymously(auth);
+            } catch (error) {
+              console.error("登入失敗:", error);
+              alert(`登入失敗：${error.message}\n請確認 Firebase Console 的 Authentication 已開啟「匿名登入」。`);
+              setIsLoading(false);
+            }
+          };
+
+          const handleLogout = () => {
+            if (window.confirm('確定要登出嗎？')) {
+              signOut(auth);
+            }
+          };
+
+          const getTodayDate = () => {
+            const d = new Date();
+            return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+          };
+
+          const handleImageChange = (e) => {
+            if (e.target.files && e.target.files[0]) {
+              const file = e.target.files[0];
+              if (file.size > 1024 * 1024) { 
+                alert("圖片太大囉！請上傳 1MB 以下的照片。");
+                return;
+              }
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                setSelectedImage(reader.result);
+              };
+              reader.readAsDataURL(file);
+            }
+          };
+
+          const openCheckIn = (type) => {
+            setCurrentType(type);
+            setIsModalOpen(true);
+            setInputText('');
+            setSelectedImage(null);
+          };
+
+          const handleSubmit = async () => {
+            if (!inputText && !selectedImage) {
+              alert("請輸入文字或上傳圖片！");
+              return;
+            }
+
+            if (!user) {
+              alert("請先登入！");
+              return;
+            }
+
+            try {
+              const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
+              
+              await addDoc(postsCollection, {
+                type: currentType.id,
+                title: currentType.label,
+                text: inputText,
+                image: selectedImage,
+                date: getTodayDate(),
+                time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                color: currentType.color,
+                createdAt: Date.now()
+              });
+
+              setIsModalOpen(false);
+            } catch (error) {
+              console.error("寫入錯誤: ", error);
+              alert("打卡失敗，請檢查網路或 Firebase 設定。");
+            }
+          };
+
+          const checkInTypes = [
+            { id: 'water', label: '喝水紀錄', icon: <Droplets size={24} />, color: 'bg-blue-500', bgColor: 'bg-blue-100', textColor: 'text-blue-600' },
+            { id: 'english', label: '英文打卡', icon: <BookOpen size={24} />, color: 'bg-orange-500', bgColor: 'bg-orange-100', textColor: 'text-orange-600' },
+            { id: 'life', label: '生活日常', icon: <Camera size={24} />, color: 'bg-pink-500', bgColor: 'bg-pink-100', textColor: 'text-pink-600' },
+          ];
+
+          // Login View
+          if (!user) {
+            return (
+              <div className="min-h-screen bg-gradient-to-br from-green-500 to-emerald-700 flex flex-col items-center justify-center p-6 text-white font-sans">
+                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6 shadow-xl animate-bounce">
+                   <span className="text-4xl">🐻</span>
                 </div>
-                <div className="absolute -bottom-1 -right-1 bg-red-400 text-xs px-1 rounded-full border border-white">員工</div>
-             </div>
-             <div className="flex flex-col">
-               <span className="font-bold text-lg">GitHub 打卡趣</span>
-               <span className="text-xs opacity-90 text-green-100">今日目標：多喝水！</span>
-             </div>
-          </div>
-          <div className="flex flex-col items-end">
-             <div className="text-xl font-bold tracking-widest">{getTodayDate()}</div>
-             <div className="text-sm opacity-80">星期五</div>
-             <button onClick={handleLogout} className="mt-1 text-xs bg-white/20 px-2 py-1 rounded hover:bg-white/30 transition flex items-center gap-1">
-               <LogOut size={10} /> 登出
-             </button>
-          </div>
-        </div>
+                <h1 className="text-3xl font-bold mb-2">打卡小幫手</h1>
+                <p className="text-green-100 mb-8 text-center max-w-xs">隨時隨地紀錄生活，<br/>同步你的喝水、學習與日常。</p>
+                
+                <button 
+                  onClick={handleLogin}
+                  disabled={isLoading}
+                  className="bg-white text-green-700 font-bold py-3 px-8 rounded-full shadow-lg flex items-center gap-2 hover:bg-green-50 transition transform hover:scale-105 active:scale-95 disabled:opacity-70"
+                >
+                   {isLoading ? '載入中...' : (
+                     <>
+                       <Smartphone size={20} />
+                       開始使用 / 登入
+                     </>
+                   )}
+                </button>
+                <p className="mt-6 text-xs text-green-200/60">目前連接專案: makinsatdaka</p>
+              </div>
+            );
+          }
 
-        {/* Calendar Strip */}
-        <div className="flex justify-between gap-2 mt-4 overflow-x-auto pb-2 no-scrollbar">
-           {['04 Thu', '05 Fri', '06 Sat', '07 Sun', '08 Mon'].map((date, idx) => (
-             <div key={idx} className={`flex flex-col items-center justify-center w-14 h-16 rounded-xl flex-shrink-0 ${idx === 1 ? 'bg-white text-green-600 shadow-lg scale-105' : 'bg-white/20 text-white'}`}>
-               <span className="text-lg font-bold">{date.split(' ')[0]}</span>
-               <span className="text-xs">{date.split(' ')[1]}</span>
-             </div>
-           ))}
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto pb-24 px-4 pt-6 space-y-6">
-        
-        {/* Buttons Grid */}
-        <div className="space-y-3">
-          <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
-            <span className="w-1 h-6 bg-green-500 rounded-full"></span>
-            今日任務
-          </h2>
-          <div className="grid grid-cols-3 gap-3">
-            {checkInTypes.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => openCheckIn(item)}
-                className={`${item.color} text-white rounded-2xl h-24 flex flex-col items-center justify-center shadow-lg transform active:scale-95 transition-all duration-200`}
-              >
-                <div className="bg-white/20 p-2 rounded-full mb-1 backdrop-blur-sm">
-                  {item.icon}
+          // Main View
+          return (
+            <div className="min-h-screen bg-gray-50 flex flex-col font-sans max-w-md mx-auto shadow-2xl overflow-hidden relative">
+              
+              {/* Header */}
+              <div className="bg-gradient-to-b from-green-400 to-green-600 pt-8 pb-4 px-6 rounded-b-[30px] shadow-md z-10 text-white relative">
+                <div className="flex justify-between items-center mb-6">
+                  <div className="flex items-center gap-3">
+                     <div className="relative">
+                        <div className="w-12 h-12 bg-yellow-300 rounded-full border-2 border-white flex items-center justify-center overflow-hidden">
+                           <span className="text-2xl">🐻</span> 
+                        </div>
+                        <div className="absolute -bottom-1 -right-1 bg-red-400 text-xs px-1 rounded-full border border-white">員工</div>
+                     </div>
+                     <div className="flex flex-col">
+                       <span className="font-bold text-lg">GitHub 打卡趣</span>
+                       <span className="text-xs opacity-90 text-green-100">今日目標：多喝水！</span>
+                     </div>
+                  </div>
+                  <div className="flex flex-col items-end">
+                     <div className="text-xl font-bold tracking-widest">{getTodayDate()}</div>
+                     <div className="text-sm opacity-80">星期五</div>
+                     <button onClick={handleLogout} className="mt-1 text-xs bg-white/20 px-2 py-1 rounded hover:bg-white/30 transition flex items-center gap-1">
+                       <LogOut size={10} /> 登出
+                     </button>
+                  </div>
                 </div>
-                <span className="text-sm font-medium">{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
 
-        {/* Feed / History */}
-        <div className="space-y-4">
-          <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
-            <span className="w-1 h-6 bg-orange-400 rounded-full"></span>
-            打卡動態
-          </h2>
-          
-          {posts.length === 0 ? (
-            <div className="text-center text-gray-400 py-10">
-              目前沒有紀錄，<br/>點擊上方按鈕開始打卡吧！
-            </div>
-          ) : (
-            posts.map((post) => (
-              <div key={post.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${post.color}`}>
-                       {post.type === 'water' && <Droplets size={14}/>}
-                       {post.type === 'english' && <BookOpen size={14}/>}
-                       {post.type === 'life' && <Camera size={14}/>}
-                    </span>
-                    <div>
-                      <h3 className="font-bold text-gray-800 text-sm">{post.title}</h3>
-                      <div className="flex items-center text-gray-400 text-xs gap-1">
-                        <Clock size={10} /> {post.time}
+                {/* Calendar Strip */}
+                <div className="flex justify-between gap-2 mt-4 overflow-x-auto pb-2 no-scrollbar">
+                   {['04 Thu', '05 Fri', '06 Sat', '07 Sun', '08 Mon'].map((date, idx) => (
+                     <div key={idx} className={`flex flex-col items-center justify-center w-14 h-16 rounded-xl flex-shrink-0 ${idx === 1 ? 'bg-white text-green-600 shadow-lg scale-105' : 'bg-white/20 text-white'}`}>
+                       <span className="text-lg font-bold">{date.split(' ')[0]}</span>
+                       <span className="text-xs">{date.split(' ')[1]}</span>
+                     </div>
+                   ))}
+                </div>
+              </div>
+
+              {/* Main Content */}
+              <div className="flex-1 overflow-y-auto pb-24 px-4 pt-6 space-y-6">
+                
+                {/* Buttons Grid */}
+                <div className="space-y-3">
+                  <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
+                    <span className="w-1 h-6 bg-green-500 rounded-full"></span>
+                    今日任務
+                  </h2>
+                  <div className="grid grid-cols-3 gap-3">
+                    {checkInTypes.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => openCheckIn(item)}
+                        className={`${item.color} text-white rounded-2xl h-24 flex flex-col items-center justify-center shadow-lg transform active:scale-95 transition-all duration-200`}
+                      >
+                        <div className="bg-white/20 p-2 rounded-full mb-1 backdrop-blur-sm">
+                          {item.icon}
+                        </div>
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Feed / History */}
+                <div className="space-y-4">
+                  <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
+                    <span className="w-1 h-6 bg-orange-400 rounded-full"></span>
+                    打卡動態
+                  </h2>
+                  
+                  {posts.length === 0 ? (
+                    <div className="text-center text-gray-400 py-10">
+                      目前沒有紀錄，<br/>點擊上方按鈕開始打卡吧！
+                    </div>
+                  ) : (
+                    posts.map((post) => (
+                      <div key={post.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${post.color}`}>
+                               {post.type === 'water' && <Droplets size={14}/>}
+                               {post.type === 'english' && <BookOpen size={14}/>}
+                               {post.type === 'life' && <Camera size={14}/>}
+                            </span>
+                            <div>
+                              <h3 className="font-bold text-gray-800 text-sm">{post.title}</h3>
+                              <div className="flex items-center text-gray-400 text-xs gap-1">
+                                <Clock size={10} /> {post.time}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <p className="text-gray-600 text-sm mb-3 whitespace-pre-wrap break-words">{post.text}</p>
+                        
+                        {post.image && (
+                          <div className="rounded-xl overflow-hidden mb-2 border border-gray-100">
+                            <img src={post.image} alt="Upload" className="w-full h-auto max-h-64 object-cover" />
+                          </div>
+                        )}
+                        
+                        <div className="flex justify-between items-center pt-2 border-t border-gray-50">
+                           <div className="flex gap-4">
+                             <button className="text-gray-400 hover:text-red-500 flex items-center gap-1 text-xs">
+                               ❤️ 讚
+                             </button>
+                             <button className="text-gray-400 hover:text-blue-500 flex items-center gap-1 text-xs">
+                               💬 留言
+                             </button>
+                           </div>
+                           <div className="text-xs text-gray-400 flex items-center gap-1">
+                              <MapPin size={10} /> 台北市
+                           </div>
+                        </div>
                       </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Check-in Modal */}
+              {isModalOpen && currentType && (
+                <div className="absolute inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+                  <div className="bg-white w-full rounded-t-[30px] p-6 shadow-2xl transform transition-transform duration-300">
+                    <div className="flex justify-between items-center mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-2 rounded-full ${currentType.bgColor} ${currentType.textColor}`}>
+                          {currentType.icon}
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-800">{currentType.label}</h3>
+                      </div>
+                      <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                        <X size={20} className="text-gray-500" />
+                      </button>
+                    </div>
+
+                    <textarea
+                      className="w-full bg-gray-50 rounded-xl p-4 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-300 resize-none mb-4"
+                      rows="4"
+                      placeholder={`分享一下你的${currentType.label}吧...`}
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                    ></textarea>
+
+                    {selectedImage && (
+                      <div className="relative mb-4 w-24 h-24">
+                        <img src={selectedImage} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
+                        <button 
+                          onClick={() => setSelectedImage(null)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => fileInputRef.current.click()}
+                          className="p-3 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition"
+                        >
+                          <ImageIcon size={24} />
+                        </button>
+                        <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={handleImageChange}
+                        />
+                      </div>
+                      
+                      <button 
+                        onClick={handleSubmit}
+                        className="bg-green-600 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-green-200 flex items-center gap-2 active:scale-95 transition"
+                      >
+                        發布 <Send size={18} />
+                      </button>
                     </div>
                   </div>
                 </div>
-                
-                <p className="text-gray-600 text-sm mb-3 whitespace-pre-wrap break-words">{post.text}</p>
-                
-                {post.image && (
-                  <div className="rounded-xl overflow-hidden mb-2 border border-gray-100">
-                    <img src={post.image} alt="Upload" className="w-full h-auto max-h-64 object-cover" />
-                  </div>
-                )}
-                
-                <div className="flex justify-between items-center pt-2 border-t border-gray-50">
-                   <div className="flex gap-4">
-                     <button className="text-gray-400 hover:text-red-500 flex items-center gap-1 text-xs">
-                       ❤️ 讚
-                     </button>
-                     <button className="text-gray-400 hover:text-blue-500 flex items-center gap-1 text-xs">
-                       💬 留言
-                     </button>
-                   </div>
-                   <div className="text-xs text-gray-400 flex items-center gap-1">
-                      <MapPin size={10} /> 台北市
-                   </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+              )}
 
-      {/* Check-in Modal */}
-      {isModalOpen && currentType && (
-        <div className="absolute inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full rounded-t-[30px] p-6 shadow-2xl transform transition-transform duration-300">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-2">
-                <div className={`p-2 rounded-full ${currentType.bgColor} ${currentType.textColor}`}>
-                  {currentType.icon}
-                </div>
-                <h3 className="text-xl font-bold text-gray-800">{currentType.label}</h3>
-              </div>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
-                <X size={20} className="text-gray-500" />
-              </button>
-            </div>
-
-            <textarea
-              className="w-full bg-gray-50 rounded-xl p-4 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-300 resize-none mb-4"
-              rows="4"
-              placeholder={`分享一下你的${currentType.label}吧...`}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-            ></textarea>
-
-            {selectedImage && (
-              <div className="relative mb-4 w-24 h-24">
-                <img src={selectedImage} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
+              {/* Bottom Navigation */}
+              <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-2 flex justify-between items-end pb-6 z-40">
                 <button 
-                  onClick={() => setSelectedImage(null)}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
+                  onClick={() => setActiveTab('home')}
+                  className={`flex flex-col items-center gap-1 ${activeTab === 'home' ? 'text-green-600' : 'text-gray-400'}`}
                 >
-                  <X size={12} />
+                  <Home size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} />
+                  <span className="text-[10px]">首頁</span>
+                </button>
+                
+                <button className="flex flex-col items-center gap-1 text-gray-400">
+                  <Calendar size={24} />
+                  <span className="text-[10px]">行事曆</span>
+                </button>
+
+                <div className="relative -top-5">
+                  <button 
+                    onClick={() => openCheckIn(checkInTypes[2])}
+                    className="w-16 h-16 bg-gradient-to-tr from-green-500 to-emerald-400 rounded-full shadow-lg shadow-green-200 flex items-center justify-center text-white border-4 border-white transform active:scale-95 transition"
+                  >
+                     <PlusCircle size={32} />
+                  </button>
+                </div>
+
+                <button className="flex flex-col items-center gap-1 text-gray-400">
+                  <MessageCircle size={24} />
+                  <span className="text-[10px]">訊息</span>
+                </button>
+                
+                <button className="flex flex-col items-center gap-1 text-gray-400">
+                  <User size={24} />
+                  <span className="text-[10px]">我的</span>
                 </button>
               </div>
-            )}
 
-            <div className="flex items-center justify-between">
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => fileInputRef.current.click()}
-                  className="p-3 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition"
-                >
-                  <ImageIcon size={24} />
-                </button>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  accept="image/*"
-                  onChange={handleImageChange}
-                />
-              </div>
-              
-              <button 
-                onClick={handleSubmit}
-                className="bg-green-600 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-green-200 flex items-center gap-2 active:scale-95 transition"
-              >
-                發布 <Send size={18} />
-              </button>
             </div>
-          </div>
-        </div>
-      )}
+          );
+        }
 
-      {/* Bottom Navigation */}
-      <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-2 flex justify-between items-end pb-6 z-40">
-        <button 
-          onClick={() => setActiveTab('home')}
-          className={`flex flex-col items-center gap-1 ${activeTab === 'home' ? 'text-green-600' : 'text-gray-400'}`}
-        >
-          <Home size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} />
-          <span className="text-[10px]">首頁</span>
-        </button>
-        
-        <button className="flex flex-col items-center gap-1 text-gray-400">
-          <Calendar size={24} />
-          <span className="text-[10px]">行事曆</span>
-        </button>
-
-        <div className="relative -top-5">
-          <button 
-            onClick={() => openCheckIn(checkInTypes[2])}
-            className="w-16 h-16 bg-gradient-to-tr from-green-500 to-emerald-400 rounded-full shadow-lg shadow-green-200 flex items-center justify-center text-white border-4 border-white transform active:scale-95 transition"
-          >
-             <PlusCircle size={32} />
-          </button>
-        </div>
-
-        <button className="flex flex-col items-center gap-1 text-gray-400">
-          <MessageCircle size={24} />
-          <span className="text-[10px]">訊息</span>
-        </button>
-        
-        <button className="flex flex-col items-center gap-1 text-gray-400">
-          <User size={24} />
-          <span className="text-[10px]">我的</span>
-        </button>
-      </div>
-
-    </div>
-  );
-}
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
