@@ -12,55 +12,142 @@ import {
   Send,
   X,
   Clock,
-  MapPin
+  MapPin,
+  LogOut,
+  Smartphone
 } from 'lucide-react';
+
+// --- Firebase Imports ---
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  onAuthStateChanged, 
+  signInAnonymously, 
+  signOut
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  query, 
+  orderBy
+} from 'firebase/firestore';
+
+// --- Firebase Configuration (已連結你的專案) ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBrMI4-2lczCGEc9baxL4hIVstyBCLojWE",
+  authDomain: "makinsatdaka.firebaseapp.com",
+  projectId: "makinsatdaka",
+  storageBucket: "makinsatdaka.firebasestorage.app",
+  messagingSenderId: "828692776788",
+  appId: "1:828692776788:web:8d28603d904973db32aac1",
+  measurementId: "G-HDL0ZZ0E7P"
+};
+
+// 初始化 Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+// 設定資料路徑 ID
+const appId = 'makinsatdaka'; 
 
 export default function App() {
   // --- State 管理 ---
+  const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentType, setCurrentType] = useState(null); // 'water', 'english', 'life'
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
-  
-  // 模擬資料庫 (預設一些假資料)
-  const [posts, setPosts] = useState([
-    {
-      id: 1,
-      type: 'english',
-      title: '英文打卡',
-      text: 'Today I learned about React hooks! 非常實用。',
-      image: null,
-      date: '2023.04.06',
-      time: '09:30',
-      color: 'bg-orange-500'
-    },
-    {
-      id: 2,
-      type: 'water',
-      title: '喝水紀錄',
-      text: '早上第一杯水，500ml 達成！',
-      image: null,
-      date: '2023.04.06',
-      time: '08:00',
-      color: 'bg-blue-500'
-    }
-  ]);
+  const [posts, setPosts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const fileInputRef = useRef(null);
 
+  // --- Firebase Auth 監聽 ---
+  useEffect(() => {
+    // 監聽使用者的登入狀態改變
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // --- Firebase Firestore 資料同步 ---
+  useEffect(() => {
+    // 如果沒有使用者，就不讀取資料
+    if (!user) {
+      setPosts([]);
+      return;
+    }
+
+    // 資料路徑：artifacts/makinsatdaka/users/{使用者ID}/posts
+    // 這樣每個人只會看到自己的打卡紀錄
+    const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
+    
+    // 建立查詢 (這邊先抓取所有資料，稍後在前端排序)
+    const q = query(postsCollection);
+
+    // 監聽資料庫變化 (Real-time listener)
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const loadedPosts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // 在前端依照時間排序 (新的在上面)
+      loadedPosts.sort((a, b) => {
+         if (a.createdAt && b.createdAt) {
+           return b.createdAt - a.createdAt;
+         }
+         return 0;
+      });
+
+      setPosts(loadedPosts);
+    }, (error) => {
+      console.error("讀取資料失敗:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // --- 登入/登出功能 ---
+  const handleLogin = async () => {
+    setIsLoading(true);
+    try {
+      // 使用匿名登入 (記得在 Firebase Console 開啟 Authentication -> Anonymous)
+      await signInAnonymously(auth);
+    } catch (error) {
+      console.error("登入失敗:", error);
+      alert(`登入失敗：${error.message}\n請確認 Firebase Console 的 Authentication 已開啟「匿名登入」。`);
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    if (window.confirm('確定要登出嗎？')) {
+      signOut(auth);
+    }
+  };
+
   // --- 輔助功能 ---
   
-  // 取得今天的日期格式
   const getTodayDate = () => {
     const d = new Date();
     return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  // 處理圖片上傳
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      
+      if (file.size > 1024 * 1024) { // 限制 1MB
+        alert("圖片太大囉！為了節省流量，請上傳 1MB 以下的照片。");
+        return;
+      }
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setSelectedImage(reader.result);
@@ -69,7 +156,6 @@ export default function App() {
     }
   };
 
-  // 開啟打卡視窗
   const openCheckIn = (type) => {
     setCurrentType(type);
     setIsModalOpen(true);
@@ -77,47 +163,82 @@ export default function App() {
     setSelectedImage(null);
   };
 
-  // 送出打卡
-  const handleSubmit = () => {
+  // --- 送出資料到 Firestore ---
+  const handleSubmit = async () => {
     if (!inputText && !selectedImage) {
       alert("請輸入文字或上傳圖片！");
       return;
     }
 
-    const newPost = {
-      id: Date.now(),
-      type: currentType.id,
-      title: currentType.label,
-      text: inputText,
-      image: selectedImage,
-      date: getTodayDate(),
-      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-      color: currentType.color
-    };
+    if (!user) {
+      alert("請先登入！");
+      return;
+    }
 
-    setPosts([newPost, ...posts]);
-    setIsModalOpen(false);
+    try {
+      const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
+      
+      await addDoc(postsCollection, {
+        type: currentType.id,
+        title: currentType.label,
+        text: inputText,
+        image: selectedImage, // 注意：正式專案建議將圖片上傳至 Firebase Storage，這裡是將 Base64 存入 Firestore (適合小型測試)
+        date: getTodayDate(),
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        color: currentType.color,
+        createdAt: Date.now() // 用於排序的时间戳记
+      });
+
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("寫入錯誤: ", error);
+      alert("打卡失敗，請檢查：\n1. 網路是否連線\n2. Firebase Firestore 是否已建立\n3. Firestore 安全規則是否為測試模式 (allow read, write)");
+    }
   };
 
-  // --- 定義打卡類型 ---
   const checkInTypes = [
     { id: 'water', label: '喝水紀錄', icon: <Droplets size={24} />, color: 'bg-blue-500', bgColor: 'bg-blue-100', textColor: 'text-blue-600' },
     { id: 'english', label: '英文打卡', icon: <BookOpen size={24} />, color: 'bg-orange-500', bgColor: 'bg-orange-100', textColor: 'text-orange-600' },
     { id: 'life', label: '生活日常', icon: <Camera size={24} />, color: 'bg-pink-500', bgColor: 'bg-pink-100', textColor: 'text-pink-600' },
   ];
 
-  // --- UI 元件 ---
+  // --- 登入畫面 ---
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-500 to-emerald-700 flex flex-col items-center justify-center p-6 text-white font-sans">
+        <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6 shadow-xl animate-bounce">
+           <span className="text-4xl">🐻</span>
+        </div>
+        <h1 className="text-3xl font-bold mb-2">打卡小幫手</h1>
+        <p className="text-green-100 mb-8 text-center max-w-xs">隨時隨地紀錄生活，<br/>同步你的喝水、學習與日常。</p>
+        
+        <button 
+          onClick={handleLogin}
+          disabled={isLoading}
+          className="bg-white text-green-700 font-bold py-3 px-8 rounded-full shadow-lg flex items-center gap-2 hover:bg-green-50 transition transform hover:scale-105 active:scale-95 disabled:opacity-70"
+        >
+           {isLoading ? '載入中...' : (
+             <>
+               <Smartphone size={20} />
+               開始使用 / 登入
+             </>
+           )}
+        </button>
+        <p className="mt-6 text-xs text-green-200/60">目前連接專案: makinsatdaka</p>
+      </div>
+    );
+  }
 
+  // --- 主畫面 ---
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans max-w-md mx-auto shadow-2xl overflow-hidden relative">
       
-      {/* 1. Header 區域 (綠色漸層背景) */}
+      {/* Header */}
       <div className="bg-gradient-to-b from-green-400 to-green-600 pt-8 pb-4 px-6 rounded-b-[30px] shadow-md z-10 text-white relative">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
              <div className="relative">
                 <div className="w-12 h-12 bg-yellow-300 rounded-full border-2 border-white flex items-center justify-center overflow-hidden">
-                   {/* 模擬頭像 */}
                    <span className="text-2xl">🐻</span> 
                 </div>
                 <div className="absolute -bottom-1 -right-1 bg-red-400 text-xs px-1 rounded-full border border-white">員工</div>
@@ -127,13 +248,16 @@ export default function App() {
                <span className="text-xs opacity-90 text-green-100">今日目標：多喝水！</span>
              </div>
           </div>
-          <div className="text-right">
-            <div className="text-xl font-bold tracking-widest">{getTodayDate()}</div>
-            <div className="text-sm opacity-80">星期五</div>
+          <div className="flex flex-col items-end">
+             <div className="text-xl font-bold tracking-widest">{getTodayDate()}</div>
+             <div className="text-sm opacity-80">星期五</div>
+             <button onClick={handleLogout} className="mt-1 text-xs bg-white/20 px-2 py-1 rounded hover:bg-white/30 transition flex items-center gap-1">
+               <LogOut size={10} /> 登出
+             </button>
           </div>
         </div>
 
-        {/* 日期滑動條 (模擬) */}
+        {/* Calendar Strip */}
         <div className="flex justify-between gap-2 mt-4 overflow-x-auto pb-2 no-scrollbar">
            {['04 Thu', '05 Fri', '06 Sat', '07 Sun', '08 Mon'].map((date, idx) => (
              <div key={idx} className={`flex flex-col items-center justify-center w-14 h-16 rounded-xl flex-shrink-0 ${idx === 1 ? 'bg-white text-green-600 shadow-lg scale-105' : 'bg-white/20 text-white'}`}>
@@ -144,10 +268,10 @@ export default function App() {
         </div>
       </div>
 
-      {/* 2. 主要內容區 Scrollable */}
+      {/* Main Content */}
       <div className="flex-1 overflow-y-auto pb-24 px-4 pt-6 space-y-6">
         
-        {/* 打卡按鈕區 (Grid) */}
+        {/* Buttons Grid */}
         <div className="space-y-3">
           <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
             <span className="w-1 h-6 bg-green-500 rounded-full"></span>
@@ -169,7 +293,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* 歷史紀錄區 (Feed) */}
+        {/* Feed / History */}
         <div className="space-y-4">
           <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
             <span className="w-1 h-6 bg-orange-400 rounded-full"></span>
@@ -178,11 +302,11 @@ export default function App() {
           
           {posts.length === 0 ? (
             <div className="text-center text-gray-400 py-10">
-              還沒有打卡紀錄，快去新增吧！
+              目前沒有紀錄，<br/>點擊上方按鈕開始打卡吧！
             </div>
           ) : (
             posts.map((post) => (
-              <div key={post.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+              <div key={post.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${post.color}`}>
@@ -197,14 +321,13 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <span className="text-gray-300">...</span>
                 </div>
                 
-                <p className="text-gray-600 text-sm mb-3 whitespace-pre-wrap">{post.text}</p>
+                <p className="text-gray-600 text-sm mb-3 whitespace-pre-wrap break-words">{post.text}</p>
                 
                 {post.image && (
                   <div className="rounded-xl overflow-hidden mb-2 border border-gray-100">
-                    <img src={post.image} alt="Upload" className="w-full h-48 object-cover" />
+                    <img src={post.image} alt="Upload" className="w-full h-auto max-h-64 object-cover" />
                   </div>
                 )}
                 
@@ -227,7 +350,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* 3. Modal 彈窗 (打卡輸入介面) */}
+      {/* Check-in Modal */}
       {isModalOpen && currentType && (
         <div className="absolute inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white w-full rounded-t-[30px] p-6 shadow-2xl transform transition-transform duration-300">
@@ -291,7 +414,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 4. 底部導航列 */}
+      {/* Bottom Navigation */}
       <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-2 flex justify-between items-end pb-6 z-40">
         <button 
           onClick={() => setActiveTab('home')}
@@ -306,10 +429,9 @@ export default function App() {
           <span className="text-[10px]">行事曆</span>
         </button>
 
-        {/* 中央打卡大按鈕 */}
         <div className="relative -top-5">
           <button 
-            onClick={() => openCheckIn(checkInTypes[2])} // 預設打開生活紀錄，或做成選單
+            onClick={() => openCheckIn(checkInTypes[2])}
             className="w-16 h-16 bg-gradient-to-tr from-green-500 to-emerald-400 rounded-full shadow-lg shadow-green-200 flex items-center justify-center text-white border-4 border-white transform active:scale-95 transition"
           >
              <PlusCircle size={32} />
