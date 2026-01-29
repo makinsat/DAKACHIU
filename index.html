@@ -11,7 +11,7 @@
     <!-- Google Fonts: Montserrat -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Import Map: 定義模組來源 -->
+    <!-- Import Map: 定義模組來源 (新增 storage) -->
     <script type="importmap">
     {
       "imports": {
@@ -19,7 +19,8 @@
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
         "firebase/app": "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js",
         "firebase/auth": "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js"
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js",
+        "firebase/storage": "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js"
       }
     }
     </script>
@@ -64,6 +65,13 @@
             query, 
             orderBy 
         } from 'firebase/firestore';
+        // 新增 Storage Import
+        import { 
+            getStorage, 
+            ref, 
+            uploadBytes, 
+            getDownloadURL 
+        } from 'firebase/storage';
 
         // --- Icons Components (替代 lucide-react) ---
         const IconBase = ({ size = 24, className = "", children }) => (
@@ -111,6 +119,7 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+        const storage = getStorage(app); // 初始化 Storage
         const appId = 'makinsatdaka'; 
 
         // --- Main App Component ---
@@ -120,10 +129,11 @@
           const [isModalOpen, setIsModalOpen] = useState(false);
           const [currentType, setCurrentType] = useState(null);
           const [inputText, setInputText] = useState('');
-          const [selectedImage, setSelectedImage] = useState(null);
+          const [selectedImage, setSelectedImage] = useState(null); // 僅用於預覽 (Base64)
+          const [imageFile, setImageFile] = useState(null); // 新增：用於上傳的原始檔案
           const [posts, setPosts] = useState([]);
           const [isLoading, setIsLoading] = useState(true);
-          const [isSubmitting, setIsSubmitting] = useState(false); // 新增：處理中狀態
+          const [isSubmitting, setIsSubmitting] = useState(false);
 
           const fileInputRef = useRef(null);
 
@@ -185,11 +195,16 @@
           const handleImageChange = (e) => {
             if (e.target.files && e.target.files[0]) {
               const file = e.target.files[0];
-              // 調整為 700KB (約 0.7MB) 以確保 Base64 後不超過 Firestore 1MB 限制
-              if (file.size > 700 * 1024) { 
-                alert("圖片太大了！請使用 700KB 以下的照片，以免上傳失敗。");
+              // 調整為 1GB 限制 (1024 * 1024 * 1024 bytes)
+              if (file.size > 1024 * 1024 * 1024) { 
+                alert("圖片超過 1GB 囉！請選擇較小的檔案。");
                 return;
               }
+              
+              // 1. 儲存原始檔案準備上傳
+              setImageFile(file);
+
+              // 2. 產生預覽圖
               const reader = new FileReader();
               reader.onloadend = () => {
                 setSelectedImage(reader.result);
@@ -203,6 +218,7 @@
             setIsModalOpen(true);
             setInputText('');
             setSelectedImage(null);
+            setImageFile(null); // 重置檔案
             setIsSubmitting(false);
           };
 
@@ -217,18 +233,33 @@
               return;
             }
 
-            if (isSubmitting) return; // 防止重複點擊
+            if (isSubmitting) return;
 
-            setIsSubmitting(true); // 開始處理
+            setIsSubmitting(true);
 
             try {
+              let downloadURL = null;
+
+              // 如果有選圖片，先上傳到 Firebase Storage
+              if (imageFile) {
+                  // 建立檔案路徑：uploads/使用者ID/時間戳記_檔名
+                  const storageRef = ref(storage, `uploads/${user.uid}/${Date.now()}_${imageFile.name}`);
+                  
+                  // 上傳檔案
+                  const snapshot = await uploadBytes(storageRef, imageFile);
+                  
+                  // 取得下載連結
+                  downloadURL = await getDownloadURL(snapshot.ref);
+              }
+
+              // 儲存到 Firestore
               const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
               
               await addDoc(postsCollection, {
                 type: currentType.id,
                 title: currentType.label,
                 text: inputText,
-                image: selectedImage,
+                image: downloadURL, // 存網址，不存 Base64
                 date: getTodayDate(),
                 time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
                 color: currentType.color,
@@ -238,16 +269,15 @@
               setIsModalOpen(false);
             } catch (error) {
               console.error("寫入錯誤: ", error);
-              // 顯示更詳細的錯誤訊息
-              if (error.code === 'resource-exhausted') {
-                 alert("發布失敗：圖片檔案過大或資料庫配額已滿。");
-              } else if (error.code === 'permission-denied') {
-                 alert("發布失敗：權限不足，請檢查 Firebase 資料庫規則。");
+              if (error.code === 'storage/unauthorized') {
+                 alert("發布失敗：請到 Firebase Console 開啟 Storage (儲存空間) 功能。");
+              } else if (error.code === 'storage/canceled') {
+                 alert("上傳被取消。");
               } else {
                  alert(`發布失敗，請檢查網路連線。\n錯誤訊息: ${error.message}`);
               }
             } finally {
-              setIsSubmitting(false); // 結束處理
+              setIsSubmitting(false);
             }
           };
 
