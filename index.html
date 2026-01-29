@@ -11,7 +11,7 @@
     <!-- Google Fonts: Montserrat -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Import Map: 定義模組來源 (新增 storage) -->
+    <!-- Import Map: 定義模組來源 (移除 storage，改回單純的 firestore) -->
     <script type="importmap">
     {
       "imports": {
@@ -19,8 +19,7 @@
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
         "firebase/app": "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js",
         "firebase/auth": "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js",
-        "firebase/storage": "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js"
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js"
       }
     }
     </script>
@@ -65,13 +64,6 @@
             query, 
             orderBy 
         } from 'firebase/firestore';
-        // 新增 Storage Import
-        import { 
-            getStorage, 
-            ref, 
-            uploadBytes, 
-            getDownloadURL 
-        } from 'firebase/storage';
 
         // --- Icons Components (替代 lucide-react) ---
         const IconBase = ({ size = 24, className = "", children }) => (
@@ -119,8 +111,42 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const storage = getStorage(app); // 初始化 Storage
         const appId = 'makinsatdaka'; 
+
+        // --- Helper: Image Compression ---
+        // 這個函數會自動把大圖片縮小，這樣就能直接存進資料庫，不需要額外設定 Storage
+        const compressImage = (file) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        // 設定最大寬度為 800px (足夠手機觀看，且檔案極小)
+                        const MAX_WIDTH = 800;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        // 壓縮成 JPEG, 品質 0.6
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                        resolve(dataUrl);
+                    };
+                };
+            });
+        };
 
         // --- Main App Component ---
         function App() {
@@ -129,8 +155,7 @@
           const [isModalOpen, setIsModalOpen] = useState(false);
           const [currentType, setCurrentType] = useState(null);
           const [inputText, setInputText] = useState('');
-          const [selectedImage, setSelectedImage] = useState(null); // 僅用於預覽 (Base64)
-          const [imageFile, setImageFile] = useState(null); // 新增：用於上傳的原始檔案
+          const [selectedImage, setSelectedImage] = useState(null);
           const [posts, setPosts] = useState([]);
           const [isLoading, setIsLoading] = useState(true);
           const [isSubmitting, setIsSubmitting] = useState(false);
@@ -192,24 +217,18 @@
             return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
           };
 
-          const handleImageChange = (e) => {
+          const handleImageChange = async (e) => {
             if (e.target.files && e.target.files[0]) {
               const file = e.target.files[0];
-              // 調整為 1GB 限制 (1024 * 1024 * 1024 bytes)
-              if (file.size > 1024 * 1024 * 1024) { 
-                alert("圖片超過 1GB 囉！請選擇較小的檔案。");
-                return;
-              }
               
-              // 1. 儲存原始檔案準備上傳
-              setImageFile(file);
-
-              // 2. 產生預覽圖
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                setSelectedImage(reader.result);
-              };
-              reader.readAsDataURL(file);
+              // 直接進行壓縮處理，不管檔案多大
+              try {
+                  const compressedBase64 = await compressImage(file);
+                  setSelectedImage(compressedBase64);
+              } catch (err) {
+                  alert("圖片處理失敗，請重試");
+                  console.error(err);
+              }
             }
           };
 
@@ -218,7 +237,6 @@
             setIsModalOpen(true);
             setInputText('');
             setSelectedImage(null);
-            setImageFile(null); // 重置檔案
             setIsSubmitting(false);
           };
 
@@ -238,28 +256,14 @@
             setIsSubmitting(true);
 
             try {
-              let downloadURL = null;
-
-              // 如果有選圖片，先上傳到 Firebase Storage
-              if (imageFile) {
-                  // 建立檔案路徑：uploads/使用者ID/時間戳記_檔名
-                  const storageRef = ref(storage, `uploads/${user.uid}/${Date.now()}_${imageFile.name}`);
-                  
-                  // 上傳檔案
-                  const snapshot = await uploadBytes(storageRef, imageFile);
-                  
-                  // 取得下載連結
-                  downloadURL = await getDownloadURL(snapshot.ref);
-              }
-
-              // 儲存到 Firestore
+              // 直接儲存 (因為圖片已經壓縮過，可以直接存入 Firestore)
               const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
               
               await addDoc(postsCollection, {
                 type: currentType.id,
                 title: currentType.label,
                 text: inputText,
-                image: downloadURL, // 存網址，不存 Base64
+                image: selectedImage, // 這裡是壓縮後的 Base64 字串
                 date: getTodayDate(),
                 time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
                 color: currentType.color,
@@ -269,10 +273,8 @@
               setIsModalOpen(false);
             } catch (error) {
               console.error("寫入錯誤: ", error);
-              if (error.code === 'storage/unauthorized') {
-                 alert("發布失敗：請到 Firebase Console 開啟 Storage (儲存空間) 功能。");
-              } else if (error.code === 'storage/canceled') {
-                 alert("上傳被取消。");
+              if (error.code === 'resource-exhausted') {
+                 alert("發布失敗：即便壓縮後檔案仍過大，請選一張簡單一點的照片。");
               } else {
                  alert(`發布失敗，請檢查網路連線。\n錯誤訊息: ${error.message}`);
               }
