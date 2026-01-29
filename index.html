@@ -11,7 +11,7 @@
     <!-- Google Fonts: Montserrat -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Import Map: 定義模組來源 (移除 storage，改回單純的 firestore) -->
+    <!-- Import Map: 定義模組來源 -->
     <script type="importmap">
     {
       "imports": {
@@ -39,6 +39,14 @@
             background-color: #f3f4f6;
             -webkit-tap-highlight-color: transparent; /* 移除手機點擊高亮 */
         }
+        /* 愛心跳動動畫 */
+        @keyframes heart-bounce {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+        .animate-heart {
+            animation: heart-bounce 0.3s ease-in-out;
+        }
     </style>
 </head>
 <body>
@@ -60,13 +68,16 @@
             getFirestore, 
             collection, 
             addDoc, 
+            deleteDoc, // 新增：刪除
+            updateDoc, // 新增：更新(按讚)
+            doc,       // 新增：文件參照
             onSnapshot, 
             query, 
             orderBy 
         } from 'firebase/firestore';
 
         // --- Icons Components (替代 lucide-react) ---
-        const IconBase = ({ size = 24, className = "", children }) => (
+        const IconBase = ({ size = 24, className = "", children, ...props }) => (
             <svg 
                 xmlns="http://www.w3.org/2000/svg" 
                 width={size} 
@@ -78,6 +89,7 @@
                 strokeLinecap="round" 
                 strokeLinejoin="round" 
                 className={className}
+                {...props}
             >
                 {children}
             </svg>
@@ -95,6 +107,7 @@
         const Clock = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconBase>;
         const MapPin = (props) => <IconBase {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></IconBase>;
         const Heart = (props) => <IconBase {...props}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></IconBase>;
+        const Trash2 = (props) => <IconBase {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>;
 
         // --- Firebase Configuration ---
         const firebaseConfig = {
@@ -114,7 +127,6 @@
         const appId = 'makinsatdaka'; 
 
         // --- Helper: Image Compression ---
-        // 這個函數會自動把大圖片縮小，這樣就能直接存進資料庫，不需要額外設定 Storage
         const compressImage = (file) => {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -124,7 +136,6 @@
                     img.src = event.target.result;
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
-                        // 設定最大寬度為 800px (足夠手機觀看，且檔案極小)
                         const MAX_WIDTH = 800;
                         let width = img.width;
                         let height = img.height;
@@ -139,8 +150,6 @@
 
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
-
-                        // 壓縮成 JPEG, 品質 0.6
                         const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
                         resolve(dataUrl);
                     };
@@ -220,8 +229,6 @@
           const handleImageChange = async (e) => {
             if (e.target.files && e.target.files[0]) {
               const file = e.target.files[0];
-              
-              // 直接進行壓縮處理，不管檔案多大
               try {
                   const compressedBase64 = await compressImage(file);
                   setSelectedImage(compressedBase64);
@@ -240,6 +247,30 @@
             setIsSubmitting(false);
           };
 
+          // 刪除打卡功能
+          const handleDeletePost = async (postId) => {
+             if (window.confirm("確定要刪除這則打卡嗎？")) {
+                 try {
+                     await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId));
+                 } catch (error) {
+                     console.error("刪除失敗", error);
+                     alert("刪除失敗，請檢查網路連線");
+                 }
+             }
+          };
+
+          // 按讚功能 (切換狀態)
+          const handleToggleLike = async (post) => {
+              try {
+                  const postRef = doc(db, 'artifacts', appId, 'users', user.uid, 'posts', post.id);
+                  await updateDoc(postRef, {
+                      liked: !post.liked
+                  });
+              } catch (error) {
+                  console.error("按讚更新失敗", error);
+              }
+          };
+
           const handleSubmit = async () => {
             if (!inputText && !selectedImage) {
               alert("請輸入文字或上傳圖片！");
@@ -256,17 +287,17 @@
             setIsSubmitting(true);
 
             try {
-              // 直接儲存 (因為圖片已經壓縮過，可以直接存入 Firestore)
               const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
               
               await addDoc(postsCollection, {
                 type: currentType.id,
                 title: currentType.label,
                 text: inputText,
-                image: selectedImage, // 這裡是壓縮後的 Base64 字串
+                image: selectedImage,
                 date: getTodayDate(),
                 time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
                 color: currentType.color,
+                liked: false, // 預設沒有按讚
                 createdAt: Date.now()
               });
 
@@ -327,7 +358,7 @@
                     </div>
                   ) : (
                     posts.map((post) => (
-                      <div key={post.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div key={post.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-2 duration-300 relative group">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
                             <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${post.color}`}>
@@ -342,6 +373,14 @@
                               </div>
                             </div>
                           </div>
+                          {/* 刪除按鈕 */}
+                          <button 
+                            onClick={() => handleDeletePost(post.id)}
+                            className="text-gray-300 hover:text-red-500 p-2 transition-colors"
+                            aria-label="刪除"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                         
                         <p className="text-gray-600 text-sm mb-3 whitespace-pre-wrap break-words">{post.text}</p>
@@ -354,8 +393,16 @@
                         
                         <div className="flex justify-between items-center pt-2 border-t border-gray-50">
                            <div className="flex gap-4">
-                             <button className="text-gray-400 hover:text-red-500 flex items-center gap-1 text-xs">
-                               <Heart size={14} className="mr-1"/> 讚
+                             {/* 按讚按鈕 */}
+                             <button 
+                                onClick={() => handleToggleLike(post)}
+                                className={`flex items-center gap-1 text-xs transition-colors ${post.liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'}`}
+                             >
+                               <Heart 
+                                 size={14} 
+                                 className={`mr-1 ${post.liked ? 'fill-current animate-heart' : ''}`} 
+                               /> 
+                               {post.liked ? '已讚' : '讚'}
                              </button>
                            </div>
                            <div className="text-xs text-gray-400 flex items-center gap-1">
