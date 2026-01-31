@@ -6,20 +6,22 @@
     <title>子玲打卡日常</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- 1. 更換為穩定版 Babel，解決白屏報錯問題 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    
     <!-- Google Fonts: Montserrat -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Import Map: 定義模組來源 -->
+    <!-- Import Map: 使用 esm.sh 載入模組 -->
     <script type="importmap">
     {
       "imports": {
         "react": "https://esm.sh/react@18.2.0",
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "firebase/app": "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js",
-        "firebase/auth": "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js"
+        "firebase/app": "https://esm.sh/firebase@10.13.1/app",
+        "firebase/auth": "https://esm.sh/firebase@10.13.1/auth",
+        "firebase/firestore": "https://esm.sh/firebase@10.13.1/firestore"
       }
     }
     </script>
@@ -34,12 +36,10 @@
             scrollbar-width: none;
         }
         body {
-            /* 使用 Montserrat 字體 */
             font-family: 'Montserrat', sans-serif;
             background-color: #f3f4f6;
-            -webkit-tap-highlight-color: transparent; /* 移除手機點擊高亮 */
+            -webkit-tap-highlight-color: transparent;
         }
-        /* 愛心跳動動畫 */
         @keyframes heart-bounce {
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.2); }
@@ -47,12 +47,50 @@
         .animate-heart {
             animation: heart-bounce 0.3s ease-in-out;
         }
+        /* 錯誤訊息顯示區 (若還有錯誤會顯示紅字) */
+        #error-display {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: white;
+            color: red;
+            padding: 20px;
+            z-index: 9999;
+            overflow: auto;
+            font-family: sans-serif;
+        }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <!-- 錯誤顯示區 -->
+    <div id="error-display"></div>
 
-    <script type="text/babel" data-type="module">
+    <!-- 載入中畫面 -->
+    <div id="root">
+        <div style="display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;color:#666;">
+            <div style="font-size:24px;margin-bottom:10px;">🐻</div>
+            <div>系統啟動中...</div>
+            <div style="font-size:12px;margin-top:10px;opacity:0.6;">正在連線到資料庫</div>
+        </div>
+    </div>
+
+    <!-- 全局錯誤捕捉 -->
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            const errorDisplay = document.getElementById('error-display');
+            if (errorDisplay) {
+                errorDisplay.style.display = 'block';
+                errorDisplay.innerHTML = `
+                    <h3>發生錯誤</h3>
+                    <p><strong>訊息:</strong> ${message}</p>
+                    <p>若是 Babel Error，通常重新整理或清除快取可解決。</p>
+                `;
+            }
+        };
+    </script>
+
+    <!-- 2. 加入 data-presets="env,react" 明確指定編譯模式 -->
+    <script type="text/babel" data-type="module" data-presets="env,react">
         import React, { useState, useRef, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
         
@@ -76,7 +114,7 @@
             orderBy 
         } from 'firebase/firestore';
 
-        // --- Icons Components (替代 lucide-react) ---
+        // --- Icons Components ---
         const IconBase = ({ size = 24, className = "", children, ...props }) => (
             <svg 
                 xmlns="http://www.w3.org/2000/svg" 
@@ -108,7 +146,6 @@
         const MapPin = (props) => <IconBase {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></IconBase>;
         const Heart = (props) => <IconBase {...props}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></IconBase>;
         const Trash2 = (props) => <IconBase {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>;
-        const Grid = (props) => <IconBase {...props}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></IconBase>;
 
         // --- Firebase Configuration ---
         const firebaseConfig = {
@@ -226,7 +263,7 @@
                 ...doc.data()
               }));
               
-              // 客戶端排序
+              // 客戶端排序 (新到舊)
               loadedPosts.sort((a, b) => {
                  if (a.createdAt && b.createdAt) {
                    return b.createdAt - a.createdAt;
@@ -270,7 +307,7 @@
                  try {
                      await deleteDoc(doc(db, 'artifacts', appId, 'public_posts', postId));
                      if (selectedPost && selectedPost.id === postId) {
-                         setSelectedPost(null); // 如果正在看這則，關閉詳細視窗
+                         setSelectedPost(null); 
                      }
                  } catch (error) {
                      console.error("刪除失敗", error);
@@ -288,7 +325,6 @@
                       liked: newLikedState
                   });
                   
-                  // 更新本地查看的詳細貼文狀態
                   if (selectedPost && selectedPost.id === post.id) {
                       setSelectedPost({...selectedPost, liked: newLikedState});
                   }
@@ -330,7 +366,6 @@
               });
 
               setIsModalOpen(false);
-              // 切換到該分類的檢視
               setFilterCategory(currentType.id);
             } catch (error) {
               console.error("寫入錯誤: ", error);
@@ -562,13 +597,12 @@
                      </div>
                   </div>
                   <div className="flex flex-col items-end">
-                     {/* 顯示真實日期與時間 */}
                      <div className="text-xl font-bold tracking-widest">{getFormattedDate(now)}</div>
                      <div className="text-sm opacity-80">{getChineseWeekDay(now)}</div>
                   </div>
                 </div>
 
-                {/* Calendar Strip (動態生成) */}
+                {/* Calendar Strip */}
                 <div className="flex justify-between gap-2 mt-4 overflow-x-auto pb-2 no-scrollbar">
                    {[-2, -1, 0, 1, 2].map((offset) => {
                      const d = new Date(now);
@@ -586,7 +620,7 @@
                 </div>
               </div>
 
-              {/* Main Content Scrollable Area (Padding removed for edge-to-edge grid) */}
+              {/* Main Content */}
               <div className="flex-1 overflow-y-auto pt-6 pb-24">
                   {activeTab === 'home' && renderHome()}
                   {activeTab === 'me' && renderMe()}
