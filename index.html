@@ -157,6 +157,16 @@
             });
         };
 
+        // --- Helper: Date Functions ---
+        const getChineseWeekDay = (date) => {
+            const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            return days[date.getDay()];
+        };
+
+        const getFormattedDate = (date) => {
+            return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+        };
+
         // --- Main App Component ---
         function App() {
           const [user, setUser] = useState(null);
@@ -168,8 +178,19 @@
           const [posts, setPosts] = useState([]);
           const [isLoading, setIsLoading] = useState(true);
           const [isSubmitting, setIsSubmitting] = useState(false);
+          
+          // 真實時間狀態
+          const [now, setNow] = useState(new Date());
 
           const fileInputRef = useRef(null);
+
+          // 更新時間 (每秒)
+          useEffect(() => {
+            const timer = setInterval(() => {
+                setNow(new Date());
+            }, 1000);
+            return () => clearInterval(timer);
+          }, []);
 
           // 自動匿名登入
           useEffect(() => {
@@ -189,12 +210,8 @@
             return () => unsubscribe();
           }, []);
 
-          // Firebase Firestore 資料監聽 (改為公開路徑 public_posts)
+          // Firebase Firestore 資料監聽 (恢復為 public_posts 以找回舊資料)
           useEffect(() => {
-            // 不管有沒有登入，只要初始化完成就嘗試讀取，因為是公開的
-            // 但為了寫入需要 auth，所以還是依賴 user
-            
-            // 使用共用的公開 collection
             const postsCollection = collection(db, 'artifacts', appId, 'public_posts');
             const q = query(postsCollection); 
 
@@ -213,19 +230,14 @@
               });
 
               setPosts(loadedPosts);
-              setIsLoading(false); // 讀取完畢
+              setIsLoading(false);
             }, (error) => {
               console.error("讀取資料失敗:", error);
               setIsLoading(false);
             });
 
             return () => unsubscribe();
-          }, []); // 只執行一次監聽，不依賴 user 變化重新訂閱
-
-          const getTodayDate = () => {
-            const d = new Date();
-            return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-          };
+          }, []);
 
           const handleImageChange = async (e) => {
             if (e.target.files && e.target.files[0]) {
@@ -248,7 +260,6 @@
             setIsSubmitting(false);
           };
 
-          // 刪除打卡功能 (路徑改為 public_posts)
           const handleDeletePost = async (postId) => {
              if (window.confirm("確定要刪除這則打卡嗎？")) {
                  try {
@@ -260,7 +271,6 @@
              }
           };
 
-          // 按讚功能 (切換狀態 - 路徑改為 public_posts)
           const handleToggleLike = async (post) => {
               if (!user) return;
               try {
@@ -289,7 +299,6 @@
             setIsSubmitting(true);
 
             try {
-              // 改存到 public_posts
               const postsCollection = collection(db, 'artifacts', appId, 'public_posts');
               
               await addDoc(postsCollection, {
@@ -297,13 +306,13 @@
                 title: currentType.label,
                 text: inputText,
                 image: selectedImage,
-                date: getTodayDate(),
-                time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                date: getFormattedDate(now), // 使用當前真實日期
+                time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }), // 使用當前真實時間
                 color: currentType.color,
                 liked: false, 
                 createdAt: Date.now(),
-                uid: user.uid, // 紀錄是誰發的，以便做刪除權限判斷
-                author: '子玲' // 這裡先固定名字，若要多人可改成動態
+                uid: user.uid,
+                author: '子玲'
               });
 
               setIsModalOpen(false);
@@ -319,7 +328,6 @@
             }
           };
 
-          // 定義新的打卡類型
           const checkInTypes = [
             { id: 'water', label: '喝水紀錄', icon: <Droplets size={24} />, color: 'bg-blue-500', bgColor: 'bg-blue-100', textColor: 'text-blue-600' },
             { id: 'lipbalm', label: '擦護唇膏', icon: <Sparkles size={24} />, color: 'bg-pink-500', bgColor: 'bg-pink-100', textColor: 'text-pink-600' },
@@ -402,7 +410,6 @@
                         
                         <div className="flex justify-between items-center pt-2 border-t border-gray-50">
                            <div className="flex gap-4">
-                             {/* 按讚按鈕 */}
                              <button 
                                 onClick={() => handleToggleLike(post)}
                                 className={`flex items-center gap-1 text-xs transition-colors ${post.liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'}`}
@@ -427,9 +434,7 @@
 
           // 渲染「我的」內容
           const renderMe = () => {
-            // 只統計自己的貼文
             const myPosts = posts.filter(p => user && p.uid === user.uid);
-            
             return (
                 <div className="space-y-6 animate-in fade-in duration-500">
                     <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
@@ -481,23 +486,31 @@
                      </div>
                   </div>
                   <div className="flex flex-col items-end">
-                     <div className="text-xl font-bold tracking-widest">{getTodayDate()}</div>
-                     <div className="text-sm opacity-80">星期五</div>
+                     {/* 顯示真實日期與時間 */}
+                     <div className="text-xl font-bold tracking-widest">{getFormattedDate(now)}</div>
+                     <div className="text-sm opacity-80">{getChineseWeekDay(now)}</div>
                   </div>
                 </div>
 
-                {/* Calendar Strip */}
+                {/* Calendar Strip (動態生成) */}
                 <div className="flex justify-between gap-2 mt-4 overflow-x-auto pb-2 no-scrollbar">
-                   {['04 Thu', '05 Fri', '06 Sat', '07 Sun', '08 Mon'].map((date, idx) => (
-                     <div key={idx} className={`flex flex-col items-center justify-center w-14 h-16 rounded-xl flex-shrink-0 ${idx === 1 ? 'bg-white text-green-600 shadow-lg scale-105' : 'bg-white/20 text-white'}`}>
-                       <span className="text-lg font-bold">{date.split(' ')[0]}</span>
-                       <span className="text-xs">{date.split(' ')[1]}</span>
-                     </div>
-                   ))}
+                   {[-2, -1, 0, 1, 2].map((offset) => {
+                     const d = new Date(now);
+                     d.setDate(now.getDate() + offset);
+                     const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
+                     const isToday = offset === 0;
+                     
+                     return (
+                         <div key={offset} className={`flex flex-col items-center justify-center w-14 h-16 rounded-xl flex-shrink-0 ${isToday ? 'bg-white text-green-600 shadow-lg scale-105' : 'bg-white/20 text-white'}`}>
+                           <span className="text-lg font-bold">{String(d.getDate()).padStart(2, '0')}</span>
+                           <span className="text-xs">{dayName}</span>
+                         </div>
+                     );
+                   })}
                 </div>
               </div>
 
-              {/* Main Content Scrollable Area */}
+              {/* Main Content */}
               <div className="flex-1 overflow-y-auto pb-24 px-4 pt-6">
                   {activeTab === 'home' && renderHome()}
                   {activeTab === 'me' && renderMe()}
@@ -579,8 +592,6 @@
 
               {/* Bottom Navigation */}
               <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-8 py-2 flex justify-between items-end pb-6 z-40">
-                
-                {/* 1. 首頁按鈕 */}
                 <button 
                   onClick={() => setActiveTab('home')}
                   className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'home' ? 'text-green-600' : 'text-gray-400'}`}
@@ -588,8 +599,6 @@
                   <Home size={28} strokeWidth={activeTab === 'home' ? 2.5 : 2} />
                   <span className="text-xs font-medium">首頁</span>
                 </button>
-                
-                {/* 2. 中央打卡大按鈕 */}
                 <div className="relative -top-5">
                   <button 
                     onClick={() => openCheckIn(checkInTypes[2])}
@@ -598,8 +607,6 @@
                      <PlusCircle size={32} />
                   </button>
                 </div>
-
-                {/* 3. 我的按鈕 */}
                 <button 
                   onClick={() => setActiveTab('me')}
                   className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'me' ? 'text-green-600' : 'text-gray-400'}`}
