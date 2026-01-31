@@ -68,9 +68,9 @@
             getFirestore, 
             collection, 
             addDoc, 
-            deleteDoc, // 新增：刪除
-            updateDoc, // 新增：更新(按讚)
-            doc,       // 新增：文件參照
+            deleteDoc, 
+            updateDoc, 
+            doc,       
             onSnapshot, 
             query, 
             orderBy 
@@ -96,8 +96,8 @@
         );
 
         const Droplets = (props) => <IconBase {...props}><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.8-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></IconBase>;
-        const BookOpen = (props) => <IconBase {...props}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></IconBase>;
-        const Camera = (props) => <IconBase {...props}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></IconBase>;
+        const Sparkles = (props) => <IconBase {...props}><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></IconBase>;
+        const Smile = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></IconBase>;
         const Home = (props) => <IconBase {...props}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></IconBase>;
         const PlusCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></IconBase>;
         const User = (props) => <IconBase {...props}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></IconBase>;
@@ -189,14 +189,13 @@
             return () => unsubscribe();
           }, []);
 
-          // Firebase Firestore 資料監聽
+          // Firebase Firestore 資料監聽 (改為公開路徑 public_posts)
           useEffect(() => {
-            if (!user) {
-              setPosts([]);
-              return;
-            }
-
-            const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
+            // 不管有沒有登入，只要初始化完成就嘗試讀取，因為是公開的
+            // 但為了寫入需要 auth，所以還是依賴 user
+            
+            // 使用共用的公開 collection
+            const postsCollection = collection(db, 'artifacts', appId, 'public_posts');
             const q = query(postsCollection); 
 
             const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -214,12 +213,14 @@
               });
 
               setPosts(loadedPosts);
+              setIsLoading(false); // 讀取完畢
             }, (error) => {
               console.error("讀取資料失敗:", error);
+              setIsLoading(false);
             });
 
             return () => unsubscribe();
-          }, [user]);
+          }, []); // 只執行一次監聽，不依賴 user 變化重新訂閱
 
           const getTodayDate = () => {
             const d = new Date();
@@ -247,11 +248,11 @@
             setIsSubmitting(false);
           };
 
-          // 刪除打卡功能
+          // 刪除打卡功能 (路徑改為 public_posts)
           const handleDeletePost = async (postId) => {
              if (window.confirm("確定要刪除這則打卡嗎？")) {
                  try {
-                     await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'posts', postId));
+                     await deleteDoc(doc(db, 'artifacts', appId, 'public_posts', postId));
                  } catch (error) {
                      console.error("刪除失敗", error);
                      alert("刪除失敗，請檢查網路連線");
@@ -259,10 +260,11 @@
              }
           };
 
-          // 按讚功能 (切換狀態)
+          // 按讚功能 (切換狀態 - 路徑改為 public_posts)
           const handleToggleLike = async (post) => {
+              if (!user) return;
               try {
-                  const postRef = doc(db, 'artifacts', appId, 'users', user.uid, 'posts', post.id);
+                  const postRef = doc(db, 'artifacts', appId, 'public_posts', post.id);
                   await updateDoc(postRef, {
                       liked: !post.liked
                   });
@@ -287,7 +289,8 @@
             setIsSubmitting(true);
 
             try {
-              const postsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'posts');
+              // 改存到 public_posts
+              const postsCollection = collection(db, 'artifacts', appId, 'public_posts');
               
               await addDoc(postsCollection, {
                 type: currentType.id,
@@ -297,8 +300,10 @@
                 date: getTodayDate(),
                 time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
                 color: currentType.color,
-                liked: false, // 預設沒有按讚
-                createdAt: Date.now()
+                liked: false, 
+                createdAt: Date.now(),
+                uid: user.uid, // 紀錄是誰發的，以便做刪除權限判斷
+                author: '子玲' // 這裡先固定名字，若要多人可改成動態
               });
 
               setIsModalOpen(false);
@@ -314,10 +319,11 @@
             }
           };
 
+          // 定義新的打卡類型
           const checkInTypes = [
             { id: 'water', label: '喝水紀錄', icon: <Droplets size={24} />, color: 'bg-blue-500', bgColor: 'bg-blue-100', textColor: 'text-blue-600' },
-            { id: 'english', label: '英文打卡', icon: <BookOpen size={24} />, color: 'bg-orange-500', bgColor: 'bg-orange-100', textColor: 'text-orange-600' },
-            { id: 'life', label: '生活日常', icon: <Camera size={24} />, color: 'bg-pink-500', bgColor: 'bg-pink-100', textColor: 'text-pink-600' },
+            { id: 'lipbalm', label: '擦護唇膏', icon: <Sparkles size={24} />, color: 'bg-pink-500', bgColor: 'bg-pink-100', textColor: 'text-pink-600' },
+            { id: 'gummy', label: '吃軟糖', icon: <Smile size={24} />, color: 'bg-orange-500', bgColor: 'bg-orange-100', textColor: 'text-orange-600' },
           ];
 
           // 渲染「首頁」內容
@@ -349,7 +355,7 @@
                 <div className="space-y-4">
                   <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
                     <span className="w-1 h-6 bg-orange-400 rounded-full"></span>
-                    打卡動態
+                    打卡動態 (共用)
                   </h2>
                   
                   {posts.length === 0 ? (
@@ -363,8 +369,8 @@
                           <div className="flex items-center gap-2">
                             <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${post.color}`}>
                                {post.type === 'water' && <Droplets size={14}/>}
-                               {post.type === 'english' && <BookOpen size={14}/>}
-                               {post.type === 'life' && <Camera size={14}/>}
+                               {post.type === 'lipbalm' && <Sparkles size={14}/>}
+                               {post.type === 'gummy' && <Smile size={14}/>}
                             </span>
                             <div>
                               <h3 className="font-bold text-gray-800 text-sm">{post.title}</h3>
@@ -373,14 +379,17 @@
                               </div>
                             </div>
                           </div>
-                          {/* 刪除按鈕 */}
-                          <button 
-                            onClick={() => handleDeletePost(post.id)}
-                            className="text-gray-300 hover:text-red-500 p-2 transition-colors"
-                            aria-label="刪除"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          
+                          {/* 只有自己發的文章才顯示刪除按鈕 */}
+                          {user && post.uid === user.uid && (
+                              <button 
+                                onClick={() => handleDeletePost(post.id)}
+                                className="text-gray-300 hover:text-red-500 p-2 transition-colors"
+                                aria-label="刪除"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                          )}
                         </div>
                         
                         <p className="text-gray-600 text-sm mb-3 whitespace-pre-wrap break-words">{post.text}</p>
@@ -417,35 +426,40 @@
           );
 
           // 渲染「我的」內容
-          const renderMe = () => (
-            <div className="space-y-6 animate-in fade-in duration-500">
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
-                    <div className="w-20 h-20 bg-yellow-300 rounded-full flex items-center justify-center text-4xl border-4 border-white shadow-md">
-                        🐻
+          const renderMe = () => {
+            // 只統計自己的貼文
+            const myPosts = posts.filter(p => user && p.uid === user.uid);
+            
+            return (
+                <div className="space-y-6 animate-in fade-in duration-500">
+                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
+                        <div className="w-20 h-20 bg-yellow-300 rounded-full flex items-center justify-center text-4xl border-4 border-white shadow-md">
+                            🐻
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800">子玲</h2>
+                            <span className="bg-green-100 text-green-600 text-xs px-2 py-1 rounded-full">員工</span>
+                            <p className="text-gray-400 text-xs mt-1">加入時間：2023.04.06</p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-800">子玲</h2>
-                        <span className="bg-green-100 text-green-600 text-xs px-2 py-1 rounded-full">員工</span>
-                        <p className="text-gray-400 text-xs mt-1">加入時間：2023.04.06</p>
-                    </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-3 text-center">
-                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
-                        <div className="text-xl font-bold text-blue-500">{posts.filter(p => p.type === 'water').length}</div>
-                        <div className="text-xs text-gray-400">喝水</div>
-                    </div>
-                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
-                        <div className="text-xl font-bold text-orange-500">{posts.filter(p => p.type === 'english').length}</div>
-                        <div className="text-xs text-gray-400">英文</div>
-                    </div>
-                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
-                        <div className="text-xl font-bold text-pink-500">{posts.filter(p => p.type === 'life').length}</div>
-                        <div className="text-xs text-gray-400">日常</div>
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                        <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                            <div className="text-xl font-bold text-blue-500">{myPosts.filter(p => p.type === 'water').length}</div>
+                            <div className="text-xs text-gray-400">喝水</div>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                            <div className="text-xl font-bold text-pink-500">{myPosts.filter(p => p.type === 'lipbalm').length}</div>
+                            <div className="text-xs text-gray-400">護唇膏</div>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                            <div className="text-xl font-bold text-orange-500">{myPosts.filter(p => p.type === 'gummy').length}</div>
+                            <div className="text-xs text-gray-400">軟糖</div>
+                        </div>
                     </div>
                 </div>
-            </div>
-          );
+            );
+          };
 
           // Main View
           return (
