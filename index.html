@@ -108,6 +108,7 @@
         const MapPin = (props) => <IconBase {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></IconBase>;
         const Heart = (props) => <IconBase {...props}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></IconBase>;
         const Trash2 = (props) => <IconBase {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>;
+        const Grid = (props) => <IconBase {...props}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></IconBase>;
 
         // --- Firebase Configuration ---
         const firebaseConfig = {
@@ -179,6 +180,10 @@
           const [isLoading, setIsLoading] = useState(true);
           const [isSubmitting, setIsSubmitting] = useState(false);
           
+          // 篩選與詳細檢視狀態
+          const [filterCategory, setFilterCategory] = useState('all');
+          const [selectedPost, setSelectedPost] = useState(null);
+
           // 真實時間狀態
           const [now, setNow] = useState(new Date());
 
@@ -210,7 +215,7 @@
             return () => unsubscribe();
           }, []);
 
-          // Firebase Firestore 資料監聽 (恢復為 public_posts 以找回舊資料)
+          // Firebase Firestore 資料監聽
           useEffect(() => {
             const postsCollection = collection(db, 'artifacts', appId, 'public_posts');
             const q = query(postsCollection); 
@@ -264,6 +269,9 @@
              if (window.confirm("確定要刪除這則打卡嗎？")) {
                  try {
                      await deleteDoc(doc(db, 'artifacts', appId, 'public_posts', postId));
+                     if (selectedPost && selectedPost.id === postId) {
+                         setSelectedPost(null); // 如果正在看這則，關閉詳細視窗
+                     }
                  } catch (error) {
                      console.error("刪除失敗", error);
                      alert("刪除失敗，請檢查網路連線");
@@ -275,9 +283,15 @@
               if (!user) return;
               try {
                   const postRef = doc(db, 'artifacts', appId, 'public_posts', post.id);
+                  const newLikedState = !post.liked;
                   await updateDoc(postRef, {
-                      liked: !post.liked
+                      liked: newLikedState
                   });
+                  
+                  // 更新本地查看的詳細貼文狀態
+                  if (selectedPost && selectedPost.id === post.id) {
+                      setSelectedPost({...selectedPost, liked: newLikedState});
+                  }
               } catch (error) {
                   console.error("按讚更新失敗", error);
               }
@@ -306,8 +320,8 @@
                 title: currentType.label,
                 text: inputText,
                 image: selectedImage,
-                date: getFormattedDate(now), // 使用當前真實日期
-                time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }), // 使用當前真實時間
+                date: getFormattedDate(now), 
+                time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }), 
                 color: currentType.color,
                 liked: false, 
                 createdAt: Date.now(),
@@ -316,6 +330,8 @@
               });
 
               setIsModalOpen(false);
+              // 切換到該分類的檢視
+              setFilterCategory(currentType.id);
             } catch (error) {
               console.error("寫入錯誤: ", error);
               if (error.code === 'resource-exhausted') {
@@ -334,109 +350,169 @@
             { id: 'gummy', label: '吃軟糖', icon: <Smile size={24} />, color: 'bg-orange-500', bgColor: 'bg-orange-100', textColor: 'text-orange-600' },
           ];
 
-          // 渲染「首頁」內容
-          const renderHome = () => (
-            <div className="space-y-6 animate-in fade-in duration-500">
-               {/* Buttons Grid */}
-               <div className="space-y-3">
-                  <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
-                    <span className="w-1 h-6 bg-green-500 rounded-full"></span>
-                    今日任務
-                  </h2>
-                  <div className="grid grid-cols-3 gap-3">
-                    {checkInTypes.map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => openCheckIn(item)}
-                        className={`${item.color} text-white rounded-2xl h-24 flex flex-col items-center justify-center shadow-lg transform active:scale-95 transition-all duration-200`}
-                      >
-                        <div className="bg-white/20 p-2 rounded-full mb-1 backdrop-blur-sm">
-                          {item.icon}
-                        </div>
-                        <span className="text-sm font-medium">{item.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Feed / History */}
-                <div className="space-y-4">
-                  <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
-                    <span className="w-1 h-6 bg-orange-400 rounded-full"></span>
-                    打卡動態 (共用)
-                  </h2>
-                  
-                  {posts.length === 0 ? (
-                    <div className="text-center text-gray-400 py-10">
-                      {isLoading ? "載入中..." : "目前沒有紀錄，\n點擊上方按鈕開始打卡吧！"}
-                    </div>
-                  ) : (
-                    posts.map((post) => (
-                      <div key={post.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-2 duration-300 relative group">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${post.color}`}>
-                               {post.type === 'water' && <Droplets size={14}/>}
-                               {post.type === 'lipbalm' && <Sparkles size={14}/>}
-                               {post.type === 'gummy' && <Smile size={14}/>}
-                            </span>
-                            <div>
-                              <h3 className="font-bold text-gray-800 text-sm">{post.title}</h3>
-                              <div className="flex items-center text-gray-400 text-xs gap-1">
-                                <Clock size={10} /> {post.time}
-                              </div>
+          // 渲染詳細貼文卡片 (Modal 內)
+          const renderPostDetailModal = () => {
+              if (!selectedPost) return null;
+              
+              return (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setSelectedPost(null)}>
+                    <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${selectedPost.color}`}>
+                                   {selectedPost.type === 'water' && <Droplets size={14}/>}
+                                   {selectedPost.type === 'lipbalm' && <Sparkles size={14}/>}
+                                   {selectedPost.type === 'gummy' && <Smile size={14}/>}
+                                </span>
+                                <div>
+                                  <h3 className="font-bold text-gray-800 text-sm">{selectedPost.title}</h3>
+                                  <div className="flex items-center text-gray-400 text-xs gap-1">
+                                    <Clock size={10} /> {selectedPost.time}
+                                  </div>
+                                </div>
                             </div>
-                          </div>
-                          
-                          {/* 只有自己發的文章才顯示刪除按鈕 */}
-                          {user && post.uid === user.uid && (
-                              <button 
-                                onClick={() => handleDeletePost(post.id)}
-                                className="text-gray-300 hover:text-red-500 p-2 transition-colors"
-                                aria-label="刪除"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                          )}
+                            
+                            {user && selectedPost.uid === user.uid && (
+                                <button 
+                                    onClick={() => handleDeletePost(selectedPost.id)}
+                                    className="text-gray-300 hover:text-red-500 p-2"
+                                >
+                                    <Trash2 size={18} />
+                                </button>
+                            )}
                         </div>
-                        
-                        <p className="text-gray-600 text-sm mb-3 whitespace-pre-wrap break-words">{post.text}</p>
-                        
-                        {post.image && (
-                          <div className="rounded-xl overflow-hidden mb-2 border border-gray-100">
-                            <img src={post.image} alt="Upload" className="w-full h-auto max-h-64 object-cover" />
-                          </div>
+
+                        {selectedPost.image && (
+                            <img src={selectedPost.image} alt="Post" className="w-full h-auto max-h-[60vh] object-cover bg-gray-50" />
                         )}
-                        
-                        <div className="flex justify-between items-center pt-2 border-t border-gray-50">
-                           <div className="flex gap-4">
-                             <button 
-                                onClick={() => handleToggleLike(post)}
-                                className={`flex items-center gap-1 text-xs transition-colors ${post.liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'}`}
-                             >
-                               <Heart 
-                                 size={14} 
-                                 className={`mr-1 ${post.liked ? 'fill-current animate-heart' : ''}`} 
-                               /> 
-                               {post.liked ? '已讚' : '讚'}
-                             </button>
-                           </div>
-                           <div className="text-xs text-gray-400 flex items-center gap-1">
-                              <MapPin size={10} /> 台北市
-                           </div>
+
+                        <div className="p-4">
+                            <p className="text-gray-700 text-sm whitespace-pre-wrap mb-4">{selectedPost.text}</p>
+                            
+                            <div className="flex justify-between items-center pt-2 border-t border-gray-50">
+                               <button 
+                                    onClick={() => handleToggleLike(selectedPost)}
+                                    className={`flex items-center gap-1 text-sm transition-colors ${selectedPost.liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'}`}
+                                 >
+                                   <Heart 
+                                     size={18} 
+                                     className={`mr-1 ${selectedPost.liked ? 'fill-current animate-heart' : ''}`} 
+                                   /> 
+                                   {selectedPost.liked ? '已讚' : '讚'}
+                               </button>
+                               <div className="text-xs text-gray-400 flex items-center gap-1">
+                                  <MapPin size={12} /> 台北市
+                               </div>
+                            </div>
                         </div>
-                      </div>
-                    ))
-                  )}
+                        
+                        <button onClick={() => setSelectedPost(null)} className="absolute top-2 right-2 p-1 bg-black/20 rounded-full text-white hover:bg-black/40">
+                            <X size={16} />
+                        </button>
+                    </div>
                 </div>
-            </div>
-          );
+              );
+          };
+
+          // 渲染「首頁」內容
+          const renderHome = () => {
+            const filteredPosts = filterCategory === 'all' 
+                ? posts 
+                : posts.filter(p => p.type === filterCategory);
+
+            return (
+                <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+                   {/* Buttons Grid */}
+                   <div className="space-y-3 px-4">
+                      <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
+                        <span className="w-1 h-6 bg-green-500 rounded-full"></span>
+                        今日任務
+                      </h2>
+                      <div className="grid grid-cols-3 gap-3">
+                        {checkInTypes.map((item) => (
+                          <button
+                            key={item.id}
+                            onClick={() => openCheckIn(item)}
+                            className={`${item.color} text-white rounded-2xl h-24 flex flex-col items-center justify-center shadow-lg transform active:scale-95 transition-all duration-200`}
+                          >
+                            <div className="bg-white/20 p-2 rounded-full mb-1 backdrop-blur-sm">
+                              {item.icon}
+                            </div>
+                            <span className="text-sm font-medium">{item.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Feed / History */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between px-4">
+                          <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
+                            <span className="w-1 h-6 bg-orange-400 rounded-full"></span>
+                            打卡動態
+                          </h2>
+                          <div className="flex text-xs bg-white rounded-lg p-1 shadow-sm border border-gray-100">
+                              <button 
+                                onClick={() => setFilterCategory('all')}
+                                className={`px-3 py-1 rounded-md transition-colors ${filterCategory === 'all' ? 'bg-gray-800 text-white' : 'text-gray-500'}`}
+                              >全部</button>
+                              {checkInTypes.map(type => (
+                                  <button
+                                    key={type.id}
+                                    onClick={() => setFilterCategory(type.id)}
+                                    className={`px-3 py-1 rounded-md transition-colors ${filterCategory === type.id ? 'bg-green-100 text-green-700 font-bold' : 'text-gray-500'}`}
+                                  >
+                                    {type.label.substring(0, 2)}
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+                      
+                      {filteredPosts.length === 0 ? (
+                        <div className="text-center text-gray-400 py-10 px-4">
+                          {isLoading ? "載入中..." : "目前沒有紀錄，\n點擊上方按鈕開始打卡吧！"}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-0.5 border-t border-gray-200">
+                            {filteredPosts.map((post) => (
+                                <div 
+                                    key={post.id} 
+                                    onClick={() => setSelectedPost(post)}
+                                    className="relative aspect-square cursor-pointer overflow-hidden bg-gray-100 group"
+                                >
+                                    {post.image ? (
+                                        <img src={post.image} alt={post.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                                    ) : (
+                                        <div className={`w-full h-full flex items-center justify-center ${post.color} opacity-80 text-white`}>
+                                            {post.type === 'water' && <Droplets size={32}/>}
+                                            {post.type === 'lipbalm' && <Sparkles size={32}/>}
+                                            {post.type === 'gummy' && <Smile size={32}/>}
+                                        </div>
+                                    )}
+                                    
+                                    {/* 右上角分類標籤 */}
+                                    <div className={`absolute top-1 right-1 w-2 h-2 rounded-full ${post.type === 'water' ? 'bg-blue-500' : post.type === 'lipbalm' ? 'bg-pink-500' : 'bg-orange-500'} ring-1 ring-white`}></div>
+
+                                    {/* 底部日期遮罩 */}
+                                    <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/70 to-transparent p-1 pt-4">
+                                        <p className="text-white text-[10px] font-medium text-center">
+                                            {post.date.substring(5).replace('.', '/')}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                </div>
+            );
+          };
 
           // 渲染「我的」內容
           const renderMe = () => {
             const myPosts = posts.filter(p => user && p.uid === user.uid);
             return (
-                <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="space-y-6 animate-in fade-in duration-500 px-4">
                     <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
                         <div className="w-20 h-20 bg-yellow-300 rounded-full flex items-center justify-center text-4xl border-4 border-white shadow-md">
                             🐻
@@ -510,8 +586,8 @@
                 </div>
               </div>
 
-              {/* Main Content */}
-              <div className="flex-1 overflow-y-auto pb-24 px-4 pt-6">
+              {/* Main Content Scrollable Area (Padding removed for edge-to-edge grid) */}
+              <div className="flex-1 overflow-y-auto pt-6 pb-24">
                   {activeTab === 'home' && renderHome()}
                   {activeTab === 'me' && renderMe()}
               </div>
@@ -589,6 +665,9 @@
                   </div>
                 </div>
               )}
+
+              {/* Detail Modal Overlay */}
+              {renderPostDetailModal()}
 
               {/* Bottom Navigation */}
               <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-8 py-2 flex justify-between items-end pb-6 z-40">
