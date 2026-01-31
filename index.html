@@ -6,111 +6,52 @@
     <title>子玲打卡日常</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Google Fonts: Montserrat -->
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Import Map: 定義模組來源 -->
-    <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "firebase/app": "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js",
-        "firebase/auth": "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js"
-      }
-    }
-    </script>
+    <!-- 1. 載入 React 全域變數版 (UMD) -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <!-- 2. 載入 Babel (負責翻譯 JSX) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    
+    <!-- 3. 載入 Firebase 相容版 (Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* 隱藏捲軸但保留功能 */
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         body {
-            /* 使用 Montserrat 字體 */
             font-family: 'Montserrat', sans-serif;
             background-color: #f3f4f6;
-            -webkit-tap-highlight-color: transparent; /* 移除手機點擊高亮 */
+            -webkit-tap-highlight-color: transparent;
         }
-        /* 愛心跳動動畫 */
         @keyframes heart-bounce {
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.2); }
         }
-        .animate-heart {
-            animation: heart-bounce 0.3s ease-in-out;
-        }
+        .animate-heart { animation: heart-bounce 0.3s ease-in-out; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div style="display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;color:#666;">
+            <div style="font-size:24px;margin-bottom:10px;">🐻</div>
+            <div>系統載入中...</div>
+        </div>
+    </div>
 
-    <script type="text/babel" data-type="module">
-        import React, { useState, useRef, useEffect } from 'react';
-        import { createRoot } from 'react-dom/client';
-        
-        // --- Firebase Imports ---
-        import { initializeApp } from 'firebase/app';
-        import { 
-            getAuth, 
-            onAuthStateChanged, 
-            signInAnonymously, 
-            signOut 
-        } from 'firebase/auth';
-        import { 
-            getFirestore, 
-            collection, 
-            addDoc, 
-            deleteDoc, 
-            updateDoc, 
-            doc,       
-            onSnapshot, 
-            query, 
-            orderBy 
-        } from 'firebase/firestore';
+    <!-- 注意：這裡不使用 type="module"，而是直接讓 Babel 處理全域變數 -->
+    <script type="text/babel">
+        // --- 1. 解構全域變數 (不使用 import) ---
+        const { useState, useEffect, useRef } = React;
+        const { createRoot } = ReactDOM;
 
-        // --- Icons Components (替代 lucide-react) ---
-        const IconBase = ({ size = 24, className = "", children, ...props }) => (
-            <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                width={size} 
-                height={size} 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                className={className}
-                {...props}
-            >
-                {children}
-            </svg>
-        );
-
-        const Droplets = (props) => <IconBase {...props}><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.8-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></IconBase>;
-        const Sparkles = (props) => <IconBase {...props}><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></IconBase>;
-        const Smile = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></IconBase>;
-        const Home = (props) => <IconBase {...props}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></IconBase>;
-        const PlusCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></IconBase>;
-        const User = (props) => <IconBase {...props}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></IconBase>;
-        const ImageIcon = (props) => <IconBase {...props}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></IconBase>;
-        const Send = (props) => <IconBase {...props}><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></IconBase>;
-        const X = (props) => <IconBase {...props}><path d="M18 6 6 18"/><path d="m6 6 18 18"/></IconBase>;
-        const Clock = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconBase>;
-        const MapPin = (props) => <IconBase {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></IconBase>;
-        const Heart = (props) => <IconBase {...props}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></IconBase>;
-        const Trash2 = (props) => <IconBase {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>;
-        const Grid = (props) => <IconBase {...props}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></IconBase>;
-
-        // --- Firebase Configuration ---
+        // --- 2. Firebase 設定 ---
         const firebaseConfig = {
           apiKey: "AIzaSyBrMI4-2lczCGEc9baxL4hIVstyBCLojWE",
           authDomain: "makinsatdaka.firebaseapp.com",
@@ -121,11 +62,34 @@
           measurementId: "G-HDL0ZZ0E7P"
         };
 
-        // 初始化 Firebase
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = 'makinsatdaka'; 
+        // 初始化 (使用 compat 語法)
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const appId = 'makinsatdaka';
+
+        // --- Icons Components ---
+        const IconBase = ({ size = 24, className = "", children, ...props }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+                {children}
+            </svg>
+        );
+        // ... 圖示定義 ...
+        const Droplets = (p) => <IconBase {...p}><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.8-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></IconBase>;
+        const Sparkles = (p) => <IconBase {...p}><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></IconBase>;
+        const Smile = (p) => <IconBase {...p}><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></IconBase>;
+        const Home = (p) => <IconBase {...p}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></IconBase>;
+        const PlusCircle = (p) => <IconBase {...p}><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></IconBase>;
+        const User = (p) => <IconBase {...p}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></IconBase>;
+        const ImageIcon = (p) => <IconBase {...p}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></IconBase>;
+        const Send = (p) => <IconBase {...p}><line x1="22" x2="11" y1="2" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></IconBase>;
+        const X = (p) => <IconBase {...p}><path d="M18 6 6 18"/><path d="m6 6 18 18"/></IconBase>;
+        const Clock = (p) => <IconBase {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconBase>;
+        const MapPin = (p) => <IconBase {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></IconBase>;
+        const Heart = (p) => <IconBase {...p}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></IconBase>;
+        const Trash2 = (p) => <IconBase {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>;
 
         // --- Helper: Image Compression ---
         const compressImage = (file) => {
@@ -140,15 +104,12 @@
                         const MAX_WIDTH = 800;
                         let width = img.width;
                         let height = img.height;
-
                         if (width > MAX_WIDTH) {
                             height *= MAX_WIDTH / width;
                             width = MAX_WIDTH;
                         }
-
                         canvas.width = width;
                         canvas.height = height;
-
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
                         const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
@@ -163,540 +124,287 @@
             const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
             return days[date.getDay()];
         };
-
         const getFormattedDate = (date) => {
             return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
         };
 
         // --- Main App Component ---
         function App() {
-          const [user, setUser] = useState(null);
-          const [activeTab, setActiveTab] = useState('home');
-          const [isModalOpen, setIsModalOpen] = useState(false);
-          const [currentType, setCurrentType] = useState(null);
-          const [inputText, setInputText] = useState('');
-          const [selectedImage, setSelectedImage] = useState(null);
-          const [posts, setPosts] = useState([]);
-          const [isLoading, setIsLoading] = useState(true);
-          const [isSubmitting, setIsSubmitting] = useState(false);
-          
-          // 篩選與詳細檢視狀態
-          const [filterCategory, setFilterCategory] = useState('all');
-          const [selectedPost, setSelectedPost] = useState(null);
+            const [user, setUser] = useState(null);
+            const [activeTab, setActiveTab] = useState('home');
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [currentType, setCurrentType] = useState(null);
+            const [inputText, setInputText] = useState('');
+            const [selectedImage, setSelectedImage] = useState(null);
+            const [posts, setPosts] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [filterCategory, setFilterCategory] = useState('all');
+            const [selectedPost, setSelectedPost] = useState(null);
+            const [now, setNow] = useState(new Date());
+            const fileInputRef = useRef(null);
 
-          // 真實時間狀態
-          const [now, setNow] = useState(new Date());
+            useEffect(() => {
+                const timer = setInterval(() => setNow(new Date()), 1000);
+                return () => clearInterval(timer);
+            }, []);
 
-          const fileInputRef = useRef(null);
+            // Auth Listener (Compat style)
+            useEffect(() => {
+                const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+                    if (currentUser) {
+                        setUser(currentUser);
+                    } else {
+                        // Auto login
+                        try {
+                            await auth.signInAnonymously();
+                        } catch (error) {
+                            console.error("Login failed", error);
+                        }
+                    }
+                });
+                return () => unsubscribe();
+            }, []);
 
-          // 更新時間 (每秒)
-          useEffect(() => {
-            const timer = setInterval(() => {
-                setNow(new Date());
-            }, 1000);
-            return () => clearInterval(timer);
-          }, []);
+            // Firestore Listener (Compat style)
+            useEffect(() => {
+                // 使用 db.collection().orderBy().onSnapshot()
+                const unsubscribe = db.collection('artifacts')
+                    .doc(appId)
+                    .collection('public_posts')
+                    .orderBy('createdAt', 'desc')
+                    .onSnapshot((snapshot) => {
+                        const loadedPosts = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        setPosts(loadedPosts);
+                        setIsLoading(false);
+                    }, (error) => {
+                        console.error("Data fetch error", error);
+                        setIsLoading(false);
+                    });
+                return () => unsubscribe();
+            }, []);
 
-          // 自動匿名登入
-          useEffect(() => {
-            const initAuth = async () => {
-                try {
-                    await signInAnonymously(auth);
-                } catch (error) {
-                    console.error("Auto login failed", error);
+            const handleImageChange = async (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    try {
+                        const compressed = await compressImage(e.target.files[0]);
+                        setSelectedImage(compressed);
+                    } catch (err) {
+                        alert("圖片處理失敗");
+                    }
                 }
             };
-            initAuth();
 
-            const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-              setUser(currentUser);
-              setIsLoading(false);
-            });
-            return () => unsubscribe();
-          }, []);
+            const openCheckIn = (type) => {
+                setCurrentType(type);
+                setIsModalOpen(true);
+                setInputText('');
+                setSelectedImage(null);
+                setIsSubmitting(false);
+            };
 
-          // Firebase Firestore 資料監聽
-          useEffect(() => {
-            const postsCollection = collection(db, 'artifacts', appId, 'public_posts');
-            const q = query(postsCollection); 
+            const handleSubmit = async () => {
+                if (!inputText && !selectedImage) return alert("請輸入文字或圖片");
+                if (!user) return alert("連線中...");
+                if (isSubmitting) return;
+                
+                setIsSubmitting(true);
+                try {
+                    await db.collection('artifacts').doc(appId).collection('public_posts').add({
+                        type: currentType.id,
+                        title: currentType.label,
+                        text: inputText,
+                        image: selectedImage,
+                        date: getFormattedDate(now),
+                        time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                        color: currentType.color,
+                        liked: false,
+                        createdAt: Date.now(),
+                        uid: user.uid,
+                        author: '子玲'
+                    });
+                    setIsModalOpen(false);
+                    setFilterCategory(currentType.id);
+                } catch (error) {
+                    alert("發布失敗: " + error.message);
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
 
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-              const loadedPosts = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-              }));
-              
-              // 客戶端排序
-              loadedPosts.sort((a, b) => {
-                 if (a.createdAt && b.createdAt) {
-                   return b.createdAt - a.createdAt;
-                 }
-                 return 0;
-              });
+            const handleDeletePost = async (id) => {
+                if (window.confirm("刪除此紀錄？")) {
+                    try {
+                        await db.collection('artifacts').doc(appId).collection('public_posts').doc(id).delete();
+                        if (selectedPost && selectedPost.id === id) setSelectedPost(null);
+                    } catch (e) { alert("刪除失敗"); }
+                }
+            };
 
-              setPosts(loadedPosts);
-              setIsLoading(false);
-            }, (error) => {
-              console.error("讀取資料失敗:", error);
-              setIsLoading(false);
-            });
+            const handleToggleLike = async (post) => {
+                if (!user) return;
+                try {
+                    const newVal = !post.liked;
+                    await db.collection('artifacts').doc(appId).collection('public_posts').doc(post.id).update({
+                        liked: newVal
+                    });
+                    if (selectedPost && selectedPost.id === post.id) {
+                        setSelectedPost({...selectedPost, liked: newVal});
+                    }
+                } catch (e) {}
+            };
 
-            return () => unsubscribe();
-          }, []);
+            const checkInTypes = [
+                { id: 'water', label: '喝水紀錄', icon: <Droplets size={24} />, color: 'bg-blue-500' },
+                { id: 'lipbalm', label: '擦護唇膏', icon: <Sparkles size={24} />, color: 'bg-pink-500' },
+                { id: 'gummy', label: '吃軟糖', icon: <Smile size={24} />, color: 'bg-orange-500' },
+            ];
 
-          const handleImageChange = async (e) => {
-            if (e.target.files && e.target.files[0]) {
-              const file = e.target.files[0];
-              try {
-                  const compressedBase64 = await compressImage(file);
-                  setSelectedImage(compressedBase64);
-              } catch (err) {
-                  alert("圖片處理失敗，請重試");
-                  console.error(err);
-              }
-            }
-          };
-
-          const openCheckIn = (type) => {
-            setCurrentType(type);
-            setIsModalOpen(true);
-            setInputText('');
-            setSelectedImage(null);
-            setIsSubmitting(false);
-          };
-
-          const handleDeletePost = async (postId) => {
-             if (window.confirm("確定要刪除這則打卡嗎？")) {
-                 try {
-                     await deleteDoc(doc(db, 'artifacts', appId, 'public_posts', postId));
-                     if (selectedPost && selectedPost.id === postId) {
-                         setSelectedPost(null); // 如果正在看這則，關閉詳細視窗
-                     }
-                 } catch (error) {
-                     console.error("刪除失敗", error);
-                     alert("刪除失敗，請檢查網路連線");
-                 }
-             }
-          };
-
-          const handleToggleLike = async (post) => {
-              if (!user) return;
-              try {
-                  const postRef = doc(db, 'artifacts', appId, 'public_posts', post.id);
-                  const newLikedState = !post.liked;
-                  await updateDoc(postRef, {
-                      liked: newLikedState
-                  });
-                  
-                  // 更新本地查看的詳細貼文狀態
-                  if (selectedPost && selectedPost.id === post.id) {
-                      setSelectedPost({...selectedPost, liked: newLikedState});
-                  }
-              } catch (error) {
-                  console.error("按讚更新失敗", error);
-              }
-          };
-
-          const handleSubmit = async () => {
-            if (!inputText && !selectedImage) {
-              alert("請輸入文字或上傳圖片！");
-              return;
-            }
-
-            if (!user) {
-              alert("正在連線中，請稍後再試...");
-              return;
-            }
-
-            if (isSubmitting) return;
-
-            setIsSubmitting(true);
-
-            try {
-              const postsCollection = collection(db, 'artifacts', appId, 'public_posts');
-              
-              await addDoc(postsCollection, {
-                type: currentType.id,
-                title: currentType.label,
-                text: inputText,
-                image: selectedImage,
-                date: getFormattedDate(now), 
-                time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }), 
-                color: currentType.color,
-                liked: false, 
-                createdAt: Date.now(),
-                uid: user.uid,
-                author: '子玲'
-              });
-
-              setIsModalOpen(false);
-              // 切換到該分類的檢視
-              setFilterCategory(currentType.id);
-            } catch (error) {
-              console.error("寫入錯誤: ", error);
-              if (error.code === 'resource-exhausted') {
-                 alert("發布失敗：即便壓縮後檔案仍過大，請選一張簡單一點的照片。");
-              } else {
-                 alert(`發布失敗，請檢查網路連線。\n錯誤訊息: ${error.message}`);
-              }
-            } finally {
-              setIsSubmitting(false);
-            }
-          };
-
-          const checkInTypes = [
-            { id: 'water', label: '喝水紀錄', icon: <Droplets size={24} />, color: 'bg-blue-500', bgColor: 'bg-blue-100', textColor: 'text-blue-600' },
-            { id: 'lipbalm', label: '擦護唇膏', icon: <Sparkles size={24} />, color: 'bg-pink-500', bgColor: 'bg-pink-100', textColor: 'text-pink-600' },
-            { id: 'gummy', label: '吃軟糖', icon: <Smile size={24} />, color: 'bg-orange-500', bgColor: 'bg-orange-100', textColor: 'text-orange-600' },
-          ];
-
-          // 渲染詳細貼文卡片 (Modal 內)
-          const renderPostDetailModal = () => {
-              if (!selectedPost) return null;
-              
-              return (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setSelectedPost(null)}>
-                    <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                                <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${selectedPost.color}`}>
-                                   {selectedPost.type === 'water' && <Droplets size={14}/>}
-                                   {selectedPost.type === 'lipbalm' && <Sparkles size={14}/>}
-                                   {selectedPost.type === 'gummy' && <Smile size={14}/>}
-                                </span>
-                                <div>
-                                  <h3 className="font-bold text-gray-800 text-sm">{selectedPost.title}</h3>
-                                  <div className="flex items-center text-gray-400 text-xs gap-1">
-                                    <Clock size={10} /> {selectedPost.time}
-                                  </div>
+            const renderHome = () => {
+                const filtered = filterCategory === 'all' ? posts : posts.filter(p => p.type === filterCategory);
+                return (
+                    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+                        {/* Buttons */}
+                        <div className="space-y-3 px-4">
+                            <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2"><span className="w-1 h-6 bg-green-500 rounded-full"></span>今日任務</h2>
+                            <div className="grid grid-cols-3 gap-3">
+                                {checkInTypes.map(t => (
+                                    <button key={t.id} onClick={() => openCheckIn(t)} className={`${t.color} text-white rounded-2xl h-24 flex flex-col items-center justify-center shadow-lg active:scale-95 transition`}>
+                                        <div className="bg-white/20 p-2 rounded-full mb-1 backdrop-blur-sm">{t.icon}</div>
+                                        <span className="text-sm font-medium">{t.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        {/* Feed */}
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between px-4">
+                                <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2"><span className="w-1 h-6 bg-orange-400 rounded-full"></span>打卡動態</h2>
+                                <div className="flex text-xs bg-white rounded-lg p-1 shadow-sm border border-gray-100">
+                                    <button onClick={() => setFilterCategory('all')} className={`px-3 py-1 rounded-md transition ${filterCategory === 'all' ? 'bg-gray-800 text-white' : 'text-gray-500'}`}>全部</button>
+                                    {checkInTypes.map(t => (
+                                        <button key={t.id} onClick={() => setFilterCategory(t.id)} className={`px-3 py-1 rounded-md transition ${filterCategory === t.id ? 'bg-green-100 text-green-700 font-bold' : 'text-gray-500'}`}>{t.label.substring(0,2)}</button>
+                                    ))}
                                 </div>
                             </div>
-                            
-                            {user && selectedPost.uid === user.uid && (
-                                <button 
-                                    onClick={() => handleDeletePost(selectedPost.id)}
-                                    className="text-gray-300 hover:text-red-500 p-2"
-                                >
-                                    <Trash2 size={18} />
-                                </button>
-                            )}
-                        </div>
-
-                        {selectedPost.image && (
-                            <img src={selectedPost.image} alt="Post" className="w-full h-auto max-h-[60vh] object-cover bg-gray-50" />
-                        )}
-
-                        <div className="p-4">
-                            <p className="text-gray-700 text-sm whitespace-pre-wrap mb-4">{selectedPost.text}</p>
-                            
-                            <div className="flex justify-between items-center pt-2 border-t border-gray-50">
-                               <button 
-                                    onClick={() => handleToggleLike(selectedPost)}
-                                    className={`flex items-center gap-1 text-sm transition-colors ${selectedPost.liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'}`}
-                                 >
-                                   <Heart 
-                                     size={18} 
-                                     className={`mr-1 ${selectedPost.liked ? 'fill-current animate-heart' : ''}`} 
-                                   /> 
-                                   {selectedPost.liked ? '已讚' : '讚'}
-                               </button>
-                               <div className="text-xs text-gray-400 flex items-center gap-1">
-                                  <MapPin size={12} /> 台北市
-                               </div>
-                            </div>
-                        </div>
-                        
-                        <button onClick={() => setSelectedPost(null)} className="absolute top-2 right-2 p-1 bg-black/20 rounded-full text-white hover:bg-black/40">
-                            <X size={16} />
-                        </button>
-                    </div>
-                </div>
-              );
-          };
-
-          // 渲染「首頁」內容
-          const renderHome = () => {
-            const filteredPosts = filterCategory === 'all' 
-                ? posts 
-                : posts.filter(p => p.type === filterCategory);
-
-            return (
-                <div className="space-y-6 animate-in fade-in duration-500 pb-20">
-                   {/* Buttons Grid */}
-                   <div className="space-y-3 px-4">
-                      <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
-                        <span className="w-1 h-6 bg-green-500 rounded-full"></span>
-                        今日任務
-                      </h2>
-                      <div className="grid grid-cols-3 gap-3">
-                        {checkInTypes.map((item) => (
-                          <button
-                            key={item.id}
-                            onClick={() => openCheckIn(item)}
-                            className={`${item.color} text-white rounded-2xl h-24 flex flex-col items-center justify-center shadow-lg transform active:scale-95 transition-all duration-200`}
-                          >
-                            <div className="bg-white/20 p-2 rounded-full mb-1 backdrop-blur-sm">
-                              {item.icon}
-                            </div>
-                            <span className="text-sm font-medium">{item.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Feed / History */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between px-4">
-                          <h2 className="text-gray-700 font-bold text-lg flex items-center gap-2">
-                            <span className="w-1 h-6 bg-orange-400 rounded-full"></span>
-                            打卡動態
-                          </h2>
-                          <div className="flex text-xs bg-white rounded-lg p-1 shadow-sm border border-gray-100">
-                              <button 
-                                onClick={() => setFilterCategory('all')}
-                                className={`px-3 py-1 rounded-md transition-colors ${filterCategory === 'all' ? 'bg-gray-800 text-white' : 'text-gray-500'}`}
-                              >全部</button>
-                              {checkInTypes.map(type => (
-                                  <button
-                                    key={type.id}
-                                    onClick={() => setFilterCategory(type.id)}
-                                    className={`px-3 py-1 rounded-md transition-colors ${filterCategory === type.id ? 'bg-green-100 text-green-700 font-bold' : 'text-gray-500'}`}
-                                  >
-                                    {type.label.substring(0, 2)}
-                                  </button>
-                              ))}
-                          </div>
-                      </div>
-                      
-                      {filteredPosts.length === 0 ? (
-                        <div className="text-center text-gray-400 py-10 px-4">
-                          {isLoading ? "載入中..." : "目前沒有紀錄，\n點擊上方按鈕開始打卡吧！"}
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-3 gap-0.5 border-t border-gray-200">
-                            {filteredPosts.map((post) => (
-                                <div 
-                                    key={post.id} 
-                                    onClick={() => setSelectedPost(post)}
-                                    className="relative aspect-square cursor-pointer overflow-hidden bg-gray-100 group"
-                                >
-                                    {post.image ? (
-                                        <img src={post.image} alt={post.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-                                    ) : (
-                                        <div className={`w-full h-full flex items-center justify-center ${post.color} opacity-80 text-white`}>
-                                            {post.type === 'water' && <Droplets size={32}/>}
-                                            {post.type === 'lipbalm' && <Sparkles size={32}/>}
-                                            {post.type === 'gummy' && <Smile size={32}/>}
+                            {filtered.length === 0 ? <div className="text-center text-gray-400 py-10">尚無紀錄</div> : 
+                                <div className="grid grid-cols-3 gap-0.5 border-t border-gray-200">
+                                    {filtered.map(post => (
+                                        <div key={post.id} onClick={() => setSelectedPost(post)} className="relative aspect-square bg-gray-100 group cursor-pointer overflow-hidden">
+                                            {post.image ? <img src={post.image} className="w-full h-full object-cover" /> : <div className={`w-full h-full flex items-center justify-center ${post.color} text-white`}>{post.type==='water'?<Droplets size={32}/>:post.type==='lipbalm'?<Sparkles size={32}/>:<Smile size={32}/>}</div>}
+                                            <div className="absolute bottom-0 left-0 w-full bg-black/50 p-1"><p className="text-white text-[10px] text-center">{post.date.substring(5).replace('.','/')}</p></div>
                                         </div>
-                                    )}
-                                    
-                                    {/* 右上角分類標籤 */}
-                                    <div className={`absolute top-1 right-1 w-2 h-2 rounded-full ${post.type === 'water' ? 'bg-blue-500' : post.type === 'lipbalm' ? 'bg-pink-500' : 'bg-orange-500'} ring-1 ring-white`}></div>
+                                    ))}
+                                </div>
+                            }
+                        </div>
+                    </div>
+                );
+            };
 
-                                    {/* 底部日期遮罩 */}
-                                    <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/70 to-transparent p-1 pt-4">
-                                        <p className="text-white text-[10px] font-medium text-center">
-                                            {post.date.substring(5).replace('.', '/')}
-                                        </p>
-                                    </div>
+            const renderMe = () => {
+                const myPosts = posts.filter(p => user && p.uid === user.uid);
+                return (
+                    <div className="space-y-6 animate-in fade-in duration-500 px-4">
+                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
+                            <div className="w-20 h-20 bg-yellow-300 rounded-full flex items-center justify-center text-4xl border-4 border-white shadow-md">🐻</div>
+                            <div><h2 className="text-2xl font-bold text-gray-800">子玲</h2><span className="bg-green-100 text-green-600 text-xs px-2 py-1 rounded-full">員工</span></div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                            {checkInTypes.map(t => (
+                                <div key={t.id} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                                    <div className={`text-xl font-bold ${t.id==='water'?'text-blue-500':t.id==='lipbalm'?'text-pink-500':'text-orange-500'}`}>{myPosts.filter(p => p.type === t.id).length}</div>
+                                    <div className="text-xs text-gray-400">{t.label.substring(0,3)}</div>
                                 </div>
                             ))}
                         </div>
-                      )}
                     </div>
-                </div>
-            );
-          };
+                );
+            };
 
-          // 渲染「我的」內容
-          const renderMe = () => {
-            const myPosts = posts.filter(p => user && p.uid === user.uid);
+            const renderModal = () => {
+                if (!selectedPost) return null;
+                return (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setSelectedPost(null)}>
+                        <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                            <div className="p-4 border-b flex justify-between items-center">
+                                <div className="flex items-center gap-2">
+                                    <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${selectedPost.color}`}>{selectedPost.type==='water'?<Droplets size={14}/>:selectedPost.type==='lipbalm'?<Sparkles size={14}/>:<Smile size={14}/>}</span>
+                                    <div><h3 className="font-bold text-gray-800 text-sm">{selectedPost.title}</h3><div className="text-gray-400 text-xs">{selectedPost.time}</div></div>
+                                </div>
+                                {user && selectedPost.uid === user.uid && <button onClick={() => handleDeletePost(selectedPost.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={18}/></button>}
+                            </div>
+                            {selectedPost.image && <img src={selectedPost.image} className="w-full h-auto max-h-[60vh] object-cover bg-gray-50"/>}
+                            <div className="p-4">
+                                <p className="text-gray-700 text-sm whitespace-pre-wrap mb-4">{selectedPost.text}</p>
+                                <div className="flex justify-between items-center pt-2 border-t">
+                                    <button onClick={() => handleToggleLike(selectedPost)} className={`flex items-center gap-1 text-sm ${selectedPost.liked ? 'text-red-500' : 'text-gray-400'}`}><Heart size={18} className={selectedPost.liked ? 'fill-current' : ''}/> {selectedPost.liked ? '已讚' : '讚'}</button>
+                                </div>
+                            </div>
+                            <button onClick={() => setSelectedPost(null)} className="absolute top-2 right-2 p-1 bg-black/20 rounded-full text-white"><X size={16}/></button>
+                        </div>
+                    </div>
+                );
+            };
+
             return (
-                <div className="space-y-6 animate-in fade-in duration-500 px-4">
-                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4">
-                        <div className="w-20 h-20 bg-yellow-300 rounded-full flex items-center justify-center text-4xl border-4 border-white shadow-md">
-                            🐻
+                <div className="min-h-screen bg-gray-50 flex flex-col font-sans max-w-md mx-auto shadow-2xl overflow-hidden relative">
+                    {/* Header */}
+                    <div className="bg-gradient-to-b from-green-400 to-green-600 pt-8 pb-4 px-6 rounded-b-[30px] shadow-md z-10 text-white relative">
+                        <div className="flex justify-between items-center mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-yellow-300 rounded-full border-2 border-white flex items-center justify-center text-2xl overflow-hidden">🐻</div>
+                                <div className="flex flex-col"><span className="font-bold text-lg">子玲打卡日常</span><span className="text-xs opacity-90 text-green-100">今日目標：多喝水！</span></div>
+                            </div>
+                            <div className="flex flex-col items-end"><div className="text-xl font-bold tracking-widest">{getFormattedDate(now)}</div><div className="text-sm opacity-80">{getChineseWeekDay(now)}</div></div>
                         </div>
-                        <div>
-                            <h2 className="text-2xl font-bold text-gray-800">子玲</h2>
-                            <span className="bg-green-100 text-green-600 text-xs px-2 py-1 rounded-full">員工</span>
-                            <p className="text-gray-400 text-xs mt-1">加入時間：2023.04.06</p>
+                        <div className="flex justify-between gap-2 mt-4 overflow-x-auto pb-2 no-scrollbar">
+                            {[-2, -1, 0, 1, 2].map(offset => {
+                                const d = new Date(now); d.setDate(now.getDate() + offset);
+                                return <div key={offset} className={`flex flex-col items-center justify-center w-14 h-16 rounded-xl flex-shrink-0 ${offset===0?'bg-white text-green-600 shadow-lg scale-105':'bg-white/20 text-white'}`}><span className="text-lg font-bold">{String(d.getDate()).padStart(2,'0')}</span><span className="text-xs">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]}</span></div>
+                            })}
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                        <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
-                            <div className="text-xl font-bold text-blue-500">{myPosts.filter(p => p.type === 'water').length}</div>
-                            <div className="text-xs text-gray-400">喝水</div>
+                    <div className="flex-1 overflow-y-auto pt-6 pb-24">
+                        {activeTab === 'home' && renderHome()}
+                        {activeTab === 'me' && renderMe()}
+                    </div>
+
+                    {isModalOpen && currentType && (
+                        <div className="absolute inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+                            <div className="bg-white w-full rounded-t-[30px] p-6 shadow-2xl flex flex-col max-h-[85vh]">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div className="flex items-center gap-2"><div className={`p-2 rounded-full ${currentType.bgColor} ${currentType.textColor}`}>{currentType.icon}</div><h3 className="text-xl font-bold text-gray-800">{currentType.label}</h3></div>
+                                    <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-100 rounded-full"><X size={20}/></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto">
+                                    <textarea className="w-full bg-gray-50 rounded-xl p-4 text-gray-700 focus:outline-none min-h-[120px]" rows="4" placeholder="寫點什麼..." value={inputText} onChange={e=>setInputText(e.target.value)}></textarea>
+                                    {selectedImage && <div className="relative mb-4 w-24 h-24"><img src={selectedImage} className="w-full h-full object-cover rounded-lg border"/><button onClick={()=>setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><X size={12}/></button></div>}
+                                </div>
+                                <div className="flex items-center justify-between pt-4 mt-auto">
+                                    <div className="flex gap-2">
+                                        <button onClick={()=>fileInputRef.current.click()} className="p-3 rounded-full bg-green-50 text-green-600"><ImageIcon size={24}/></button>
+                                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageChange}/>
+                                    </div>
+                                    <button onClick={handleSubmit} disabled={isSubmitting} className="px-8 py-3 rounded-full font-bold shadow-lg bg-green-600 text-white flex items-center gap-2">{isSubmitting?'發布中...':<>發布 <Send size={18}/></>}</button>
+                                </div>
+                            </div>
                         </div>
-                        <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
-                            <div className="text-xl font-bold text-pink-500">{myPosts.filter(p => p.type === 'lipbalm').length}</div>
-                            <div className="text-xs text-gray-400">護唇膏</div>
-                        </div>
-                        <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
-                            <div className="text-xl font-bold text-orange-500">{myPosts.filter(p => p.type === 'gummy').length}</div>
-                            <div className="text-xs text-gray-400">軟糖</div>
-                        </div>
+                    )}
+
+                    {renderModal()}
+
+                    <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-8 py-2 flex justify-between items-end pb-6 z-40">
+                        <button onClick={()=>setActiveTab('home')} className={`flex flex-col items-center gap-1 w-16 ${activeTab==='home'?'text-green-600':'text-gray-400'}`}><Home size={28}/><span className="text-xs font-medium">首頁</span></button>
+                        <div className="relative -top-5"><button onClick={()=>openCheckIn(checkInTypes[2])} className="w-16 h-16 bg-gradient-to-tr from-green-500 to-emerald-400 rounded-full shadow-lg flex items-center justify-center text-white border-4 border-white"><PlusCircle size={32}/></button></div>
+                        <button onClick={()=>setActiveTab('me')} className={`flex flex-col items-center gap-1 w-16 ${activeTab==='me'?'text-green-600':'text-gray-400'}`}><User size={28}/><span className="text-xs font-medium">我的</span></button>
                     </div>
                 </div>
             );
-          };
-
-          // Main View
-          return (
-            <div className="min-h-screen bg-gray-50 flex flex-col font-sans max-w-md mx-auto shadow-2xl overflow-hidden relative">
-              
-              {/* Header */}
-              <div className="bg-gradient-to-b from-green-400 to-green-600 pt-8 pb-4 px-6 rounded-b-[30px] shadow-md z-10 text-white relative">
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-3">
-                     <div className="relative">
-                        <div className="w-12 h-12 bg-yellow-300 rounded-full border-2 border-white flex items-center justify-center overflow-hidden">
-                           <span className="text-2xl">🐻</span> 
-                        </div>
-                        <div className="absolute -bottom-1 -right-1 bg-red-400 text-xs px-1 rounded-full border border-white">子玲</div>
-                     </div>
-                     <div className="flex flex-col">
-                       <span className="font-bold text-lg">子玲打卡日常</span>
-                       <span className="text-xs opacity-90 text-green-100">今日目標：多喝水！</span>
-                     </div>
-                  </div>
-                  <div className="flex flex-col items-end">
-                     {/* 顯示真實日期與時間 */}
-                     <div className="text-xl font-bold tracking-widest">{getFormattedDate(now)}</div>
-                     <div className="text-sm opacity-80">{getChineseWeekDay(now)}</div>
-                  </div>
-                </div>
-
-                {/* Calendar Strip (動態生成) */}
-                <div className="flex justify-between gap-2 mt-4 overflow-x-auto pb-2 no-scrollbar">
-                   {[-2, -1, 0, 1, 2].map((offset) => {
-                     const d = new Date(now);
-                     d.setDate(now.getDate() + offset);
-                     const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
-                     const isToday = offset === 0;
-                     
-                     return (
-                         <div key={offset} className={`flex flex-col items-center justify-center w-14 h-16 rounded-xl flex-shrink-0 ${isToday ? 'bg-white text-green-600 shadow-lg scale-105' : 'bg-white/20 text-white'}`}>
-                           <span className="text-lg font-bold">{String(d.getDate()).padStart(2, '0')}</span>
-                           <span className="text-xs">{dayName}</span>
-                         </div>
-                     );
-                   })}
-                </div>
-              </div>
-
-              {/* Main Content Scrollable Area (Padding removed for edge-to-edge grid) */}
-              <div className="flex-1 overflow-y-auto pt-6 pb-24">
-                  {activeTab === 'home' && renderHome()}
-                  {activeTab === 'me' && renderMe()}
-              </div>
-
-              {/* Check-in Modal */}
-              {isModalOpen && currentType && (
-                <div className="absolute inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-                  <div className="bg-white w-full rounded-t-[30px] p-6 shadow-2xl transform transition-transform duration-300 flex flex-col max-h-[85vh]">
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-2">
-                        <div className={`p-2 rounded-full ${currentType.bgColor} ${currentType.textColor}`}>
-                          {currentType.icon}
-                        </div>
-                        <h3 className="text-xl font-bold text-gray-800">{currentType.label}</h3>
-                      </div>
-                      <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
-                        <X size={20} className="text-gray-500" />
-                      </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto">
-                        <textarea
-                          className="w-full bg-gray-50 rounded-xl p-4 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-300 resize-none mb-4 min-h-[120px]"
-                          rows="4"
-                          placeholder={`分享一下你的${currentType.label}吧...`}
-                          value={inputText}
-                          onChange={(e) => setInputText(e.target.value)}
-                        ></textarea>
-
-                        {selectedImage && (
-                          <div className="relative mb-4 w-24 h-24">
-                            <img src={selectedImage} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
-                            <button 
-                              onClick={() => setSelectedImage(null)}
-                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
-                            >
-                              <X size={12} />
-                            </button>
-                          </div>
-                        )}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-4 mt-auto">
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => fileInputRef.current.click()}
-                          className="p-3 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition"
-                        >
-                          <ImageIcon size={24} />
-                        </button>
-                        <input 
-                          type="file" 
-                          ref={fileInputRef} 
-                          className="hidden" 
-                          accept="image/*"
-                          onChange={handleImageChange}
-                        />
-                      </div>
-                      
-                      <button 
-                        type="button"
-                        onClick={handleSubmit}
-                        disabled={isSubmitting}
-                        className={`px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 transition transform active:scale-95 ${
-                            isSubmitting 
-                            ? 'bg-gray-400 text-white cursor-not-allowed' 
-                            : 'bg-green-600 text-white shadow-green-200 hover:bg-green-700'
-                        }`}
-                      >
-                        {isSubmitting ? '發布中...' : (
-                            <>發布 <Send size={18} /></>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Detail Modal Overlay */}
-              {renderPostDetailModal()}
-
-              {/* Bottom Navigation */}
-              <div className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-8 py-2 flex justify-between items-end pb-6 z-40">
-                <button 
-                  onClick={() => setActiveTab('home')}
-                  className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'home' ? 'text-green-600' : 'text-gray-400'}`}
-                >
-                  <Home size={28} strokeWidth={activeTab === 'home' ? 2.5 : 2} />
-                  <span className="text-xs font-medium">首頁</span>
-                </button>
-                <div className="relative -top-5">
-                  <button 
-                    onClick={() => openCheckIn(checkInTypes[2])}
-                    className="w-16 h-16 bg-gradient-to-tr from-green-500 to-emerald-400 rounded-full shadow-lg shadow-green-200 flex items-center justify-center text-white border-4 border-white transform active:scale-95 transition"
-                  >
-                     <PlusCircle size={32} />
-                  </button>
-                </div>
-                <button 
-                  onClick={() => setActiveTab('me')}
-                  className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'me' ? 'text-green-600' : 'text-gray-400'}`}
-                >
-                  <User size={28} strokeWidth={activeTab === 'me' ? 2.5 : 2} />
-                  <span className="text-xs font-medium">我的</span>
-                </button>
-              </div>
-
-            </div>
-          );
         }
 
         const root = createRoot(document.getElementById('root'));
